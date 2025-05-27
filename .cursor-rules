@@ -1,0 +1,111 @@
+# Cursor Rules for Maître Joueur RPG Session Management Tool
+
+## Package Management
+- ALWAYS use `uv` instead of `pip` for package management
+- Use `uv add <package>` to add dependencies
+- Use `uv venv` to create virtual environments
+- Use `uv run` to execute scripts in the virtual environment
+- Update pyproject.toml when adding new dependencies
+
+## Project Structure
+- Follow the structure defined in PROJECT_STRUCTURE.md
+- Update PROJECT_STRUCTURE.md whenever making significant changes to the project
+- Keep all source code in the `src/` directory
+- Use proper module organization with `__init__.py` files
+
+## Code Style & Standards
+- Use Python 3.11+ features
+- Follow PEP 8 style guidelines
+- Use type hints for all function parameters and return values
+- Use Pydantic for data validation and models
+- Use SQLAlchemy for database operations
+- Prefer async/await patterns where applicable
+
+## Environment & Security
+- Never display or commit API keys or secrets
+- Always assume environment variables are properly set in .env
+- Use python-dotenv to load environment variables
+- Add sensitive files to .gitignore
+
+## Streamlit Best Practices
+- Use st.cache_data for expensive operations
+- Implement proper error handling with st.error()
+- Use st.session_state for maintaining state
+- Organize UI components in separate modules
+- Use st.columns() for responsive layouts
+
+## Database & Data Management
+- Use SQLAlchemy ORM for database operations
+- Implement proper database migrations
+- Use UUID for primary keys
+- Add proper indexes for query performance
+- Implement soft deletes where appropriate
+
+## AI Integration
+- Handle API rate limits gracefully
+- Implement retry logic for API calls
+- Cache AI responses when possible
+- Provide fallback options if AI services are unavailable
+- Use structured prompts for consistent outputs
+
+## File Management
+- Store uploaded files in data/audio/ directory
+- Implement file size and type validation
+- Clean up temporary files after processing
+- Use proper file naming conventions with timestamps
+
+## Testing
+- Write unit tests for all services
+- Use pytest for testing framework
+- Mock external API calls in tests
+- Test error conditions and edge cases
+- Maintain test coverage above 80%
+
+## Documentation
+- Update README.md with setup and usage instructions
+- Document all public functions and classes
+- Include examples in docstrings
+- Keep PROJECT_STRUCTURE.md current with changes
+- Update these cursor rules when project evolves
+
+## Git Workflow
+- Use conventional commit messages
+- Create feature branches for new functionality
+- Keep commits atomic and focused
+- Update documentation in the same commit as code changes
+
+## Performance Considerations
+- Implement caching for transcription results
+- Use streaming for large file uploads
+- Optimize database queries
+- Implement pagination for large datasets
+- Monitor memory usage for audio processing
+
+## Error Handling
+- Use try-catch blocks for external API calls
+- Provide user-friendly error messages
+- Log errors for debugging
+- Implement graceful degradation
+- Validate user inputs before processing
+
+## Development Workflow
+1. Check PROJECT_STRUCTURE.md before starting new features
+2. Update project structure document if making architectural changes
+3. Use uv for all package management operations
+4. Test locally before committing
+5. Update documentation alongside code changes 
+
+## Project Structure
+maitre-joueur/
+├── app.py                    # Main Streamlit application
+├── src/
+│   ├── config.py            # Pydantic configuration
+│   ├── database/
+│   │   ├── models.py        # SQLAlchemy models
+│   │   └── database.py      # Database management
+│   └── services/
+│       ├── transcription.py # OpenAI Whisper service
+│       └── ai_analysis.py   # GPT-4o analysis service
+├── data/                    # Audio files & database
+├── tests/                   # Test structure ready
+└── Documentation files
