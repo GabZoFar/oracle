@@ -1,14 +1,187 @@
 """Audio compression utilities and recommendations."""
 
 import logging
+import subprocess
+import shutil
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
+import tempfile
+import os
 
 logger = logging.getLogger(__name__)
 
 
 class AudioCompressionHelper:
     """Helper class for audio compression recommendations and utilities."""
+    
+    def __init__(self):
+        """Initialize the compression helper."""
+        self.ffmpeg_available = self._check_ffmpeg_availability()
+    
+    def _check_ffmpeg_availability(self) -> bool:
+        """Check if FFmpeg is available on the system."""
+        try:
+            result = subprocess.run(
+                ["ffmpeg", "-version"], 
+                capture_output=True, 
+                text=True, 
+                timeout=10
+            )
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.SubprocessError):
+            return False
+    
+    def is_ffmpeg_available(self) -> bool:
+        """Check if FFmpeg is available for compression."""
+        return self.ffmpeg_available
+    
+    def compress_audio_file(
+        self, 
+        input_path: Path, 
+        output_path: Optional[Path] = None,
+        target_bitrate: int = 128,
+        target_format: str = "mp3",
+        mono: bool = False,
+        sample_rate: Optional[int] = None
+    ) -> Tuple[bool, str, Optional[Path]]:
+        """
+        Compress an audio file using FFmpeg.
+        
+        Args:
+            input_path: Path to the input audio file
+            output_path: Path for the output file (optional, will generate if None)
+            target_bitrate: Target bitrate in kbps
+            target_format: Target format (mp3, wav, etc.)
+            mono: Convert to mono
+            sample_rate: Target sample rate (optional)
+            
+        Returns:
+            Tuple of (success, message, output_path)
+        """
+        if not self.ffmpeg_available:
+            return False, "FFmpeg n'est pas disponible sur ce système", None
+        
+        try:
+            # Generate output path if not provided
+            if output_path is None:
+                input_stem = input_path.stem
+                output_path = input_path.parent / f"{input_stem}_compressed.{target_format}"
+            
+            # Build FFmpeg command
+            cmd = ["ffmpeg", "-i", str(input_path)]
+            
+            # Audio codec and bitrate
+            if target_format.lower() == "mp3":
+                cmd.extend(["-codec:a", "libmp3lame", "-b:a", f"{target_bitrate}k"])
+            elif target_format.lower() == "wav":
+                cmd.extend(["-codec:a", "pcm_s16le"])
+            else:
+                cmd.extend(["-b:a", f"{target_bitrate}k"])
+            
+            # Mono conversion
+            if mono:
+                cmd.extend(["-ac", "1"])
+            
+            # Sample rate
+            if sample_rate:
+                cmd.extend(["-ar", str(sample_rate)])
+            
+            # Overwrite output file and add output path
+            cmd.extend(["-y", str(output_path)])
+            
+            logger.info(f"Running FFmpeg command: {' '.join(cmd)}")
+            
+            # Run FFmpeg
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+            
+            if result.returncode == 0:
+                # Check if output file was created and has reasonable size
+                if output_path.exists() and output_path.stat().st_size > 1000:  # At least 1KB
+                    output_size_mb = output_path.stat().st_size / (1024 * 1024)
+                    input_size_mb = input_path.stat().st_size / (1024 * 1024)
+                    reduction_percent = ((input_size_mb - output_size_mb) / input_size_mb) * 100
+                    
+                    message = f"Compression réussie ! Taille réduite de {input_size_mb:.1f} MB à {output_size_mb:.1f} MB ({reduction_percent:.1f}% de réduction)"
+                    return True, message, output_path
+                else:
+                    return False, "Le fichier compressé n'a pas été créé correctement", None
+            else:
+                error_msg = result.stderr if result.stderr else "Erreur inconnue"
+                return False, f"Erreur FFmpeg: {error_msg}", None
+                
+        except subprocess.TimeoutExpired:
+            return False, "La compression a pris trop de temps (timeout)", None
+        except Exception as e:
+            logger.error(f"Error during compression: {e}")
+            return False, f"Erreur lors de la compression: {str(e)}", None
+    
+    def get_optimal_compression_settings(self, file_size_mb: float, file_format: str) -> Dict[str, any]:
+        """
+        Get optimal compression settings based on file size and format.
+        
+        Args:
+            file_size_mb: Current file size in MB
+            file_format: Current file format
+            
+        Returns:
+            Dictionary with optimal settings
+        """
+        settings = {
+            "target_format": "mp3",
+            "target_bitrate": 128,
+            "mono": False,
+            "sample_rate": None,
+            "estimated_size_mb": 0
+        }
+        
+        # Adjust settings based on file size
+        if file_size_mb > 100:
+            # Very large files - aggressive compression
+            settings.update({
+                "target_bitrate": 96,
+                "mono": True,
+                "sample_rate": 22050
+            })
+        elif file_size_mb > 50:
+            # Large files - moderate compression
+            settings.update({
+                "target_bitrate": 128,
+                "mono": True
+            })
+        elif file_size_mb > 25:
+            # Medium files - light compression
+            settings.update({
+                "target_bitrate": 128
+            })
+        
+        # Estimate compressed size
+        settings["estimated_size_mb"] = self.estimate_compressed_size(
+            file_size_mb, 
+            file_format, 
+            settings["target_format"], 
+            settings["target_bitrate"]
+        )
+        
+        # Adjust if still too large
+        if settings["estimated_size_mb"] > 24:
+            settings.update({
+                "target_bitrate": 64,
+                "mono": True,
+                "sample_rate": 22050
+            })
+            settings["estimated_size_mb"] = self.estimate_compressed_size(
+                file_size_mb, 
+                file_format, 
+                settings["target_format"], 
+                settings["target_bitrate"]
+            )
+        
+        return settings
     
     @staticmethod
     def get_compression_recommendations(file_size_mb: float, file_format: str) -> Dict[str, str]:
@@ -65,6 +238,7 @@ class AudioCompressionHelper:
         
         # Add general tools
         recommendations["tools"] = [
+            "Compression automatique FFmpeg (dans l'app)",
             "Audacity (gratuit, interface graphique)",
             "FFmpeg (ligne de commande, très puissant)",
             "Online Audio Converter",

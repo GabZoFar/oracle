@@ -225,8 +225,101 @@ def upload_page():
             Votre fichier fait {file_size_mb:.2f} MB, mais l'API OpenAI Whisper a une limite de 25 MB.
             """)
             
-            # Show compression recommendations
-            with st.expander("🛠️ Solutions de compression (cliquez pour voir)", expanded=True):
+            # Check if FFmpeg is available for automatic compression
+            if audio_helper.is_ffmpeg_available():
+                st.success("🎉 **Compression automatique disponible !**")
+                
+                # Get optimal compression settings
+                optimal_settings = audio_helper.get_optimal_compression_settings(file_size_mb, file_extension)
+                
+                col1, col2 = st.columns([2, 1])
+                
+                with col1:
+                    st.markdown("### 🤖 Compression automatique (recommandée)")
+                    st.info(f"""
+                    **Paramètres optimaux détectés :**
+                    - Format de sortie : {optimal_settings['target_format'].upper()}
+                    - Bitrate : {optimal_settings['target_bitrate']} kbps
+                    - Mono : {'Oui' if optimal_settings['mono'] else 'Non'}
+                    - Fréquence : {optimal_settings['sample_rate'] or 'Originale'} Hz
+                    
+                    **Taille estimée après compression :** {optimal_settings['estimated_size_mb']:.1f} MB
+                    """)
+                
+                with col2:
+                    if st.button("🚀 Compresser automatiquement", type="primary", key="auto_compress"):
+                        # Save the original file first
+                        temp_file_path = save_uploaded_file(uploaded_file)
+                        if temp_file_path:
+                            with st.spinner("Compression en cours... Cela peut prendre quelques minutes."):
+                                # Compress the file
+                                success, message, compressed_path = audio_helper.compress_audio_file(
+                                    temp_file_path,
+                                    target_bitrate=optimal_settings['target_bitrate'],
+                                    target_format=optimal_settings['target_format'],
+                                    mono=optimal_settings['mono'],
+                                    sample_rate=optimal_settings['sample_rate']
+                                )
+                                
+                                if success and compressed_path:
+                                    st.success(message)
+                                    
+                                    # Update file info for the compressed file
+                                    compressed_size_mb = compressed_path.stat().st_size / (1024 * 1024)
+                                    
+                                    if compressed_size_mb <= 25:
+                                        st.success(f"✅ Le fichier compressé ({compressed_size_mb:.1f} MB) est maintenant compatible avec l'API Whisper !")
+                                        
+                                        # Create session with compressed file
+                                        try:
+                                            with get_db_session() as db:
+                                                new_session = Session(
+                                                    title=f"Session {session_number}",
+                                                    session_number=session_number,
+                                                    date=datetime.combine(session_date, datetime.min.time()),
+                                                    audio_file_path=str(compressed_path),
+                                                    audio_file_name=f"{Path(uploaded_file.name).stem}_compressed.{optimal_settings['target_format']}",
+                                                    audio_file_size=compressed_path.stat().st_size,
+                                                    processing_status="uploaded"
+                                                )
+                                                db.add(new_session)
+                                                db.commit()
+                                                
+                                                session_id = str(new_session.id)
+                                            
+                                            # Clean up original file
+                                            try:
+                                                temp_file_path.unlink()
+                                            except:
+                                                pass
+                                            
+                                            # Process the compressed session
+                                            process_session(session_id, compressed_path)
+                                            return
+                                            
+                                        except Exception as e:
+                                            logger.error(f"Failed to create session with compressed file: {e}")
+                                            st.error(f"Erreur lors de la création de la session : {e}")
+                                    else:
+                                        st.warning(f"⚠️ Le fichier compressé ({compressed_size_mb:.1f} MB) est encore trop volumineux. Essayez une compression plus agressive.")
+                                else:
+                                    st.error(f"❌ Échec de la compression : {message}")
+                                
+                                # Clean up files on error
+                                try:
+                                    temp_file_path.unlink()
+                                    if compressed_path and compressed_path.exists():
+                                        compressed_path.unlink()
+                                except:
+                                    pass
+                
+                st.markdown("---")
+            else:
+                st.warning("⚠️ **FFmpeg non disponible** - La compression automatique n'est pas possible sur ce système.")
+                st.info("Pour installer FFmpeg : https://ffmpeg.org/download.html")
+            
+            # Show manual compression recommendations
+            with st.expander("🛠️ Solutions de compression manuelles", expanded=not audio_helper.is_ffmpeg_available()):
                 st.markdown("### 📊 Estimation après compression")
                 st.success(f"Taille estimée après compression: **{estimated_size:.1f} MB** (réduction de {recommendations['estimated_reduction']})")
                 

@@ -154,6 +154,39 @@ The application includes intelligent handling for large audio files:
 - **Application limit**: 500MB (configurable via `MAX_FILE_SIZE_MB`)
 - **Whisper API limit**: 25MB (OpenAI's hard limit)
 
+### 🤖 Automatic Compression (NEW!)
+When you upload a file larger than 25MB, the app now offers **automatic compression** if FFmpeg is installed:
+
+- **One-click compression** with optimal settings
+- **Smart parameter detection** based on file size and format
+- **Real-time progress** and compression statistics
+- **Automatic processing** after successful compression
+
+#### FFmpeg Installation
+The app will detect if FFmpeg is available. If not installed:
+
+**macOS (recommended):**
+```bash
+brew install ffmpeg
+```
+
+**Ubuntu/Debian:**
+```bash
+sudo apt update && sudo apt install ffmpeg
+```
+
+**Windows:**
+```bash
+choco install ffmpeg
+# or
+winget install FFmpeg
+```
+
+**Installation Helper:**
+```bash
+uv run python install_ffmpeg.py
+```
+
 ### Automatic Compression Guidance
 When you upload a file larger than 25MB, the app provides:
 - **Estimated compressed size** based on your file format
