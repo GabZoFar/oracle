@@ -42,7 +42,8 @@ class AudioCompressionHelper:
         target_bitrate: int = 128,
         target_format: str = "mp3",
         mono: bool = False,
-        sample_rate: Optional[int] = None
+        sample_rate: Optional[int] = None,
+        ultra_aggressive: bool = False
     ) -> Tuple[bool, str, Optional[Path]]:
         """
         Compress an audio file using FFmpeg.
@@ -54,6 +55,7 @@ class AudioCompressionHelper:
             target_format: Target format (mp3, wav, etc.)
             mono: Convert to mono
             sample_rate: Target sample rate (optional)
+            ultra_aggressive: Use ultra-aggressive compression settings
             
         Returns:
             Tuple of (success, message, output_path)
@@ -65,14 +67,27 @@ class AudioCompressionHelper:
             # Generate output path if not provided
             if output_path is None:
                 input_stem = input_path.stem
-                output_path = input_path.parent / f"{input_stem}_compressed.{target_format}"
+                suffix = "_ultra_compressed" if ultra_aggressive else "_compressed"
+                output_path = input_path.parent / f"{input_stem}{suffix}.{target_format}"
             
             # Build FFmpeg command
             cmd = ["ffmpeg", "-i", str(input_path)]
             
             # Audio codec and bitrate
             if target_format.lower() == "mp3":
-                cmd.extend(["-codec:a", "libmp3lame", "-b:a", f"{target_bitrate}k"])
+                cmd.extend(["-codec:a", "libmp3lame"])
+                
+                # Ultra-aggressive settings
+                if ultra_aggressive:
+                    cmd.extend([
+                        "-b:a", f"{target_bitrate}k",
+                        "-q:a", "9",  # Lowest quality for maximum compression
+                        "-compression_level", "9",  # Maximum compression
+                        "-joint_stereo", "1"  # Joint stereo for better compression
+                    ])
+                else:
+                    cmd.extend(["-b:a", f"{target_bitrate}k"])
+                    
             elif target_format.lower() == "wav":
                 cmd.extend(["-codec:a", "pcm_s16le"])
             else:
@@ -85,6 +100,14 @@ class AudioCompressionHelper:
             # Sample rate
             if sample_rate:
                 cmd.extend(["-ar", str(sample_rate)])
+            
+            # Additional aggressive compression options
+            if ultra_aggressive:
+                cmd.extend([
+                    "-cutoff", "11000",  # Low-pass filter at 11kHz
+                    "-reservoir", "0",   # Disable bit reservoir
+                    "-abr", "1"          # Use average bitrate
+                ])
             
             # Overwrite output file and add output path
             cmd.extend(["-y", str(output_path)])
@@ -106,7 +129,8 @@ class AudioCompressionHelper:
                     input_size_mb = input_path.stat().st_size / (1024 * 1024)
                     reduction_percent = ((input_size_mb - output_size_mb) / input_size_mb) * 100
                     
-                    message = f"Compression réussie ! Taille réduite de {input_size_mb:.1f} MB à {output_size_mb:.1f} MB ({reduction_percent:.1f}% de réduction)"
+                    compression_type = "ultra-agressive" if ultra_aggressive else "standard"
+                    message = f"Compression {compression_type} réussie ! Taille réduite de {input_size_mb:.1f} MB à {output_size_mb:.1f} MB ({reduction_percent:.1f}% de réduction)"
                     return True, message, output_path
                 else:
                     return False, "Le fichier compressé n'a pas été créé correctement", None
@@ -133,30 +157,33 @@ class AudioCompressionHelper:
         """
         settings = {
             "target_format": "mp3",
-            "target_bitrate": 128,
-            "mono": False,
-            "sample_rate": None,
+            "target_bitrate": 64,  # Start with lower bitrate
+            "mono": True,  # Force mono for better compression
+            "sample_rate": 22050,  # Reduce sample rate by default
             "estimated_size_mb": 0
         }
         
-        # Adjust settings based on file size
+        # Much more aggressive settings based on file size
         if file_size_mb > 100:
-            # Very large files - aggressive compression
+            # Very large files - extremely aggressive compression
             settings.update({
-                "target_bitrate": 96,
+                "target_bitrate": 32,  # Very low bitrate
+                "mono": True,
+                "sample_rate": 16000  # Even lower sample rate
+            })
+        elif file_size_mb > 50:
+            # Large files - very aggressive compression
+            settings.update({
+                "target_bitrate": 48,  # Low bitrate
                 "mono": True,
                 "sample_rate": 22050
             })
-        elif file_size_mb > 50:
-            # Large files - moderate compression
-            settings.update({
-                "target_bitrate": 128,
-                "mono": True
-            })
         elif file_size_mb > 25:
-            # Medium files - light compression
+            # Medium files - aggressive compression
             settings.update({
-                "target_bitrate": 128
+                "target_bitrate": 64,
+                "mono": True,
+                "sample_rate": 22050
             })
         
         # Estimate compressed size
@@ -167,12 +194,26 @@ class AudioCompressionHelper:
             settings["target_bitrate"]
         )
         
-        # Adjust if still too large
+        # If still too large, make it even more aggressive
         if settings["estimated_size_mb"] > 24:
             settings.update({
-                "target_bitrate": 64,
+                "target_bitrate": 24,  # Extremely low bitrate
                 "mono": True,
-                "sample_rate": 22050
+                "sample_rate": 16000
+            })
+            settings["estimated_size_mb"] = self.estimate_compressed_size(
+                file_size_mb, 
+                file_format, 
+                settings["target_format"], 
+                settings["target_bitrate"]
+            )
+        
+        # Final fallback - ultra aggressive
+        if settings["estimated_size_mb"] > 24:
+            settings.update({
+                "target_bitrate": 16,  # Ultra low bitrate
+                "mono": True,
+                "sample_rate": 11025  # Very low sample rate
             })
             settings["estimated_size_mb"] = self.estimate_compressed_size(
                 file_size_mb, 
@@ -309,21 +350,27 @@ class AudioCompressionHelper:
         Returns:
             Estimated compressed size in MB
         """
-        # Rough compression ratios based on format conversion
+        # More aggressive compression ratios based on format conversion
         compression_ratios = {
-            ("wav", "mp3"): 0.1,  # WAV to MP3 is ~90% reduction
-            ("flac", "mp3"): 0.3,  # FLAC to MP3 is ~70% reduction
-            ("m4a", "mp3"): 0.6,   # M4A to MP3 is ~40% reduction
-            ("mp3", "mp3"): 0.7,   # MP3 to lower quality MP3
+            ("wav", "mp3"): 0.05,  # WAV to MP3 is ~95% reduction with aggressive settings
+            ("flac", "mp3"): 0.15,  # FLAC to MP3 is ~85% reduction
+            ("m4a", "mp3"): 0.25,   # M4A to MP3 is ~75% reduction
+            ("mp3", "mp3"): 0.4,    # MP3 to lower quality MP3 is ~60% reduction
         }
         
-        ratio = compression_ratios.get((original_format.lower(), target_format.lower()), 0.5)
+        ratio = compression_ratios.get((original_format.lower(), target_format.lower()), 0.3)
         
-        # Adjust based on bitrate (128kbps is baseline)
-        bitrate_factor = bitrate / 128
+        # Adjust based on bitrate (64kbps is new baseline, not 128)
+        bitrate_factor = bitrate / 64
+        
+        # Additional reduction for very low bitrates
+        if bitrate <= 32:
+            bitrate_factor *= 0.5  # Extra 50% reduction for ultra-low bitrates
+        elif bitrate <= 48:
+            bitrate_factor *= 0.7  # Extra 30% reduction for very low bitrates
         
         estimated_size = original_size_mb * ratio * bitrate_factor
-        return max(estimated_size, 1.0)  # Minimum 1MB
+        return max(estimated_size, 0.5)  # Minimum 0.5MB
     
     @staticmethod
     def should_split_file(file_size_mb: float, max_segment_mb: float = 20) -> Tuple[bool, int]:

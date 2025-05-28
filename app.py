@@ -185,7 +185,6 @@ def upload_page():
     **Limites et recommandations:**
     - Taille maximale: {settings.max_file_size_mb} MB
     - ⚠️ **Important**: L'API OpenAI Whisper a une limite de 25 MB
-    - Pour les fichiers > 25 MB, compressez-les ou divisez-les en segments
     - Formats supportés: {', '.join(settings.supported_audio_formats).upper()}
     """)
     
@@ -252,7 +251,7 @@ def upload_page():
                         temp_file_path = save_uploaded_file(uploaded_file)
                         if temp_file_path:
                             with st.spinner("Compression en cours... Cela peut prendre quelques minutes."):
-                                # Compress the file
+                                # Compress the file with aggressive settings
                                 success, message, compressed_path = audio_helper.compress_audio_file(
                                     temp_file_path,
                                     target_bitrate=optimal_settings['target_bitrate'],
@@ -301,7 +300,68 @@ def upload_page():
                                             logger.error(f"Failed to create session with compressed file: {e}")
                                             st.error(f"Erreur lors de la création de la session : {e}")
                                     else:
-                                        st.warning(f"⚠️ Le fichier compressé ({compressed_size_mb:.1f} MB) est encore trop volumineux. Essayez une compression plus agressive.")
+                                        st.warning(f"⚠️ Le fichier compressé ({compressed_size_mb:.1f} MB) est encore trop volumineux.")
+                                        
+                                        # Offer ultra-aggressive compression
+                                        st.info("🔥 Tentative de compression ultra-agressive...")
+                                        
+                                        # Try ultra-aggressive compression
+                                        ultra_success, ultra_message, ultra_compressed_path = audio_helper.compress_audio_file(
+                                            temp_file_path,
+                                            target_bitrate=16,  # Ultra low bitrate
+                                            target_format="mp3",
+                                            mono=True,
+                                            sample_rate=11025,  # Very low sample rate
+                                            ultra_aggressive=True
+                                        )
+                                        
+                                        if ultra_success and ultra_compressed_path:
+                                            st.success(ultra_message)
+                                            ultra_size_mb = ultra_compressed_path.stat().st_size / (1024 * 1024)
+                                            
+                                            if ultra_size_mb <= 25:
+                                                st.success(f"✅ Compression ultra-agressive réussie ! ({ultra_size_mb:.1f} MB)")
+                                                
+                                                # Clean up first compressed file
+                                                try:
+                                                    compressed_path.unlink()
+                                                except:
+                                                    pass
+                                                
+                                                # Create session with ultra-compressed file
+                                                try:
+                                                    with get_db_session() as db:
+                                                        new_session = Session(
+                                                            title=f"Session {session_number}",
+                                                            session_number=session_number,
+                                                            date=datetime.combine(session_date, datetime.min.time()),
+                                                            audio_file_path=str(ultra_compressed_path),
+                                                            audio_file_name=f"{Path(uploaded_file.name).stem}_ultra_compressed.mp3",
+                                                            audio_file_size=ultra_compressed_path.stat().st_size,
+                                                            processing_status="uploaded"
+                                                        )
+                                                        db.add(new_session)
+                                                        db.commit()
+                                                        
+                                                        session_id = str(new_session.id)
+                                                    
+                                                    # Clean up original file
+                                                    try:
+                                                        temp_file_path.unlink()
+                                                    except:
+                                                        pass
+                                                    
+                                                    # Process the ultra-compressed session
+                                                    process_session(session_id, ultra_compressed_path)
+                                                    return
+                                                    
+                                                except Exception as e:
+                                                    logger.error(f"Failed to create session with ultra-compressed file: {e}")
+                                                    st.error(f"Erreur lors de la création de la session : {e}")
+                                            else:
+                                                st.error(f"❌ Même avec la compression ultra-agressive, le fichier ({ultra_size_mb:.1f} MB) reste trop volumineux. Essayez de diviser le fichier en segments plus petits.")
+                                        else:
+                                            st.error(f"❌ Échec de la compression ultra-agressive : {ultra_message}")
                                 else:
                                     st.error(f"❌ Échec de la compression : {message}")
                                 
