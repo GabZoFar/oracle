@@ -209,7 +209,7 @@ def upload_page():
             st.error(f"❌ Le fichier est trop volumineux. Taille maximale: {settings.max_file_size_mb} MB")
             return
         
-        # Check against Whisper API limits
+        # Check against Whisper API limits and propose compression immediately
         if file_size_mb > 25:
             # Get file extension for recommendations
             file_extension = Path(uploaded_file.name).suffix.lower().lstrip('.')
@@ -246,7 +246,7 @@ def upload_page():
                     """)
                 
                 with col2:
-                    if st.button("🚀 Compresser automatiquement", type="primary", key="auto_compress"):
+                    if st.button("🚀 Compresser et traiter", type="primary", key="auto_compress_and_process"):
                         # Save the original file first
                         temp_file_path = save_uploaded_file(uploaded_file)
                         if temp_file_path:
@@ -409,7 +409,7 @@ def upload_page():
                     for cmd in ffmpeg_commands[1:]:
                         st.code(cmd, language="bash")
             
-            return
+            return  # Exit early if file is too big - don't show process button
         
         # Warning for large files (but under 25MB)
         if file_size_mb > 15:
@@ -419,7 +419,7 @@ def upload_page():
             Le traitement peut prendre plus de temps. Assurez-vous d'avoir une connexion stable.
             """)
         
-        # Process button
+        # Process button (only shown if file is valid size)
         if st.button("🚀 Traiter la session", type="primary"):
             # Save uploaded file
             audio_file_path = save_uploaded_file(uploaded_file)

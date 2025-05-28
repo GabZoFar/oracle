@@ -269,6 +269,15 @@ class AudioCompressionHelper:
             ])
             recommendations["estimated_reduction"] = "40-60%"
             
+        elif file_format.lower() == "aac":
+            recommendations["methods"].extend([
+                "Réduire le bitrate (256kbps → 128kbps)",
+                "Convertir en MP3 pour meilleure compression",
+                "Convertir en mono si stéréo",
+                "Réduire la fréquence d'échantillonnage"
+            ])
+            recommendations["estimated_reduction"] = "40-60%"
+            
         else:  # MP3 and others
             recommendations["methods"].extend([
                 "Réduire le bitrate (320kbps → 128kbps ou 96kbps)",
@@ -355,6 +364,7 @@ class AudioCompressionHelper:
             ("wav", "mp3"): 0.05,  # WAV to MP3 is ~95% reduction with aggressive settings
             ("flac", "mp3"): 0.15,  # FLAC to MP3 is ~85% reduction
             ("m4a", "mp3"): 0.25,   # M4A to MP3 is ~75% reduction
+            ("aac", "mp3"): 0.25,   # AAC to MP3 is ~75% reduction (similar to M4A)
             ("mp3", "mp3"): 0.4,    # MP3 to lower quality MP3 is ~60% reduction
         }
         

@@ -69,6 +69,7 @@ A modern Streamlit application for Game Masters to transcribe, analyze, and mana
 - M4A
 - FLAC
 - OGG
+- AAC
 
 ## 🏗️ Project Structure
 
@@ -142,7 +143,7 @@ Each processed session includes:
 ### Audio Settings
 - Maximum file size: 500MB (configurable)
 - ⚠️ **OpenAI Whisper API limit: 25MB** - files larger than this will need compression
-- Supported formats: MP3, WAV, M4A, FLAC, OGG
+- Supported formats: MP3, WAV, M4A, FLAC, OGG, AAC
 - Language: French (configurable in transcription service)
 - **Built-in compression recommendations** for oversized files
 

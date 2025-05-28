@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     log_level: str = Field("INFO", env="LOG_LEVEL")
     
     # Supported audio formats
-    supported_audio_formats: list[str] = ["mp3", "wav", "m4a", "flac", "ogg"]
+    supported_audio_formats: list[str] = ["mp3", "wav", "m4a", "flac", "ogg", "aac"]
     
     # Large file handling
     chunk_size_mb: int = Field(25, env="CHUNK_SIZE_MB")
