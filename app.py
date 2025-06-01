@@ -65,6 +65,17 @@ st.markdown("""
 def init_app():
     """Initialize the application."""
     try:
+        # Create logs directory if it doesn't exist
+        logs_dir = Path("logs")
+        logs_dir.mkdir(exist_ok=True)
+        
+        # Configure file handler for logging
+        file_handler = logging.FileHandler("logs/app.log")
+        file_handler.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        
         init_database()
         logger.info("Application initialized successfully")
     except Exception as e:
@@ -180,14 +191,6 @@ def upload_page():
     # Audio file upload
     st.subheader("📁 Upload du fichier audio")
     
-    # Display file size limits and recommendations
-    st.info(f"""
-    **Limites et recommandations:**
-    - Taille maximale: {settings.max_file_size_mb} MB
-    - ⚠️ **Important**: L'API OpenAI Whisper a une limite de 25 MB
-    - Formats supportés: {', '.join(settings.supported_audio_formats).upper()}
-    """)
-    
     uploaded_file = st.file_uploader(
         "Choisissez un fichier audio",
         type=settings.supported_audio_formats,
@@ -195,258 +198,353 @@ def upload_page():
     )
     
     if uploaded_file is not None:
-        # Display file info
+        # Display file info on one line
         file_size_mb = len(uploaded_file.getbuffer()) / (1024 * 1024)
-        st.info(f"📄 **Fichier:** {uploaded_file.name}")
-        st.info(f"📊 **Taille:** {file_size_mb:.2f} MB")
+        file_extension = Path(uploaded_file.name).suffix.lower().lstrip('.')
         
-        # Estimate processing time
-        estimated_time = transcription_service.estimate_processing_time(file_size_mb)
-        st.info(f"⏱️ **Temps estimé:** {estimated_time}")
+        # Compact file info display
+        st.info(f"📄 **{uploaded_file.name}** • {file_size_mb:.1f} MB")
         
         # Validate file size against our limits
         if file_size_mb > settings.max_file_size_mb:
-            st.error(f"❌ Le fichier est trop volumineux. Taille maximale: {settings.max_file_size_mb} MB")
+            st.error(f"❌ Fichier trop volumineux (max: {settings.max_file_size_mb} MB)")
             return
         
-        # Check against Whisper API limits and propose compression immediately
-        if file_size_mb > 25:
-            # Get file extension for recommendations
-            file_extension = Path(uploaded_file.name).suffix.lower().lstrip('.')
-            
-            # Get compression recommendations
-            recommendations = audio_helper.get_compression_recommendations(file_size_mb, file_extension)
-            estimated_size = audio_helper.estimate_compressed_size(file_size_mb, file_extension)
-            
-            st.error(f"""
-            ❌ **Fichier trop volumineux pour l'API Whisper**
-            
-            Votre fichier fait {file_size_mb:.2f} MB, mais l'API OpenAI Whisper a une limite de 25 MB.
-            """)
-            
-            # Check if FFmpeg is available for automatic compression
-            if audio_helper.is_ffmpeg_available():
-                st.success("🎉 **Compression automatique disponible !**")
-                
-                # Get optimal compression settings
-                optimal_settings = audio_helper.get_optimal_compression_settings(file_size_mb, file_extension)
-                
-                col1, col2 = st.columns([2, 1])
-                
-                with col1:
-                    st.markdown("### 🤖 Compression automatique (recommandée)")
-                    st.info(f"""
-                    **Paramètres optimaux détectés :**
-                    - Format de sortie : {optimal_settings['target_format'].upper()}
-                    - Bitrate : {optimal_settings['target_bitrate']} kbps
-                    - Mono : {'Oui' if optimal_settings['mono'] else 'Non'}
-                    - Fréquence : {optimal_settings['sample_rate'] or 'Originale'} Hz
-                    
-                    **Taille estimée après compression :** {optimal_settings['estimated_size_mb']:.1f} MB
-                    """)
-                
-                with col2:
-                    if st.button("🚀 Compresser et traiter", type="primary", key="auto_compress_and_process"):
-                        # Save the original file first
-                        temp_file_path = save_uploaded_file(uploaded_file)
-                        if temp_file_path:
-                            with st.spinner("Compression en cours... Cela peut prendre quelques minutes."):
-                                # Compress the file with aggressive settings
-                                success, message, compressed_path = audio_helper.compress_audio_file(
-                                    temp_file_path,
-                                    target_bitrate=optimal_settings['target_bitrate'],
-                                    target_format=optimal_settings['target_format'],
-                                    mono=optimal_settings['mono'],
-                                    sample_rate=optimal_settings['sample_rate']
-                                )
-                                
-                                if success and compressed_path:
-                                    st.success(message)
-                                    
-                                    # Update file info for the compressed file
-                                    compressed_size_mb = compressed_path.stat().st_size / (1024 * 1024)
-                                    
-                                    if compressed_size_mb <= 25:
-                                        st.success(f"✅ Le fichier compressé ({compressed_size_mb:.1f} MB) est maintenant compatible avec l'API Whisper !")
-                                        
-                                        # Create session with compressed file
-                                        try:
-                                            with get_db_session() as db:
-                                                new_session = Session(
-                                                    title=f"Session {session_number}",
-                                                    session_number=session_number,
-                                                    date=datetime.combine(session_date, datetime.min.time()),
-                                                    audio_file_path=str(compressed_path),
-                                                    audio_file_name=f"{Path(uploaded_file.name).stem}_compressed.{optimal_settings['target_format']}",
-                                                    audio_file_size=compressed_path.stat().st_size,
-                                                    processing_status="uploaded"
-                                                )
-                                                db.add(new_session)
-                                                db.commit()
-                                                
-                                                session_id = str(new_session.id)
-                                            
-                                            # Clean up original file
-                                            try:
-                                                temp_file_path.unlink()
-                                            except:
-                                                pass
-                                            
-                                            # Process the compressed session
-                                            process_session(session_id, compressed_path)
-                                            return
-                                            
-                                        except Exception as e:
-                                            logger.error(f"Failed to create session with compressed file: {e}")
-                                            st.error(f"Erreur lors de la création de la session : {e}")
-                                    else:
-                                        st.warning(f"⚠️ Le fichier compressé ({compressed_size_mb:.1f} MB) est encore trop volumineux.")
-                                        
-                                        # Offer ultra-aggressive compression
-                                        st.info("🔥 Tentative de compression ultra-agressive...")
-                                        
-                                        # Try ultra-aggressive compression
-                                        ultra_success, ultra_message, ultra_compressed_path = audio_helper.compress_audio_file(
-                                            temp_file_path,
-                                            target_bitrate=16,  # Ultra low bitrate
-                                            target_format="mp3",
-                                            mono=True,
-                                            sample_rate=11025,  # Very low sample rate
-                                            ultra_aggressive=True
-                                        )
-                                        
-                                        if ultra_success and ultra_compressed_path:
-                                            st.success(ultra_message)
-                                            ultra_size_mb = ultra_compressed_path.stat().st_size / (1024 * 1024)
-                                            
-                                            if ultra_size_mb <= 25:
-                                                st.success(f"✅ Compression ultra-agressive réussie ! ({ultra_size_mb:.1f} MB)")
-                                                
-                                                # Clean up first compressed file
-                                                try:
-                                                    compressed_path.unlink()
-                                                except:
-                                                    pass
-                                                
-                                                # Create session with ultra-compressed file
-                                                try:
-                                                    with get_db_session() as db:
-                                                        new_session = Session(
-                                                            title=f"Session {session_number}",
-                                                            session_number=session_number,
-                                                            date=datetime.combine(session_date, datetime.min.time()),
-                                                            audio_file_path=str(ultra_compressed_path),
-                                                            audio_file_name=f"{Path(uploaded_file.name).stem}_ultra_compressed.mp3",
-                                                            audio_file_size=ultra_compressed_path.stat().st_size,
-                                                            processing_status="uploaded"
-                                                        )
-                                                        db.add(new_session)
-                                                        db.commit()
-                                                        
-                                                        session_id = str(new_session.id)
-                                                    
-                                                    # Clean up original file
-                                                    try:
-                                                        temp_file_path.unlink()
-                                                    except:
-                                                        pass
-                                                    
-                                                    # Process the ultra-compressed session
-                                                    process_session(session_id, ultra_compressed_path)
-                                                    return
-                                                    
-                                                except Exception as e:
-                                                    logger.error(f"Failed to create session with ultra-compressed file: {e}")
-                                                    st.error(f"Erreur lors de la création de la session : {e}")
-                                            else:
-                                                st.error(f"❌ Même avec la compression ultra-agressive, le fichier ({ultra_size_mb:.1f} MB) reste trop volumineux. Essayez de diviser le fichier en segments plus petits.")
-                                        else:
-                                            st.error(f"❌ Échec de la compression ultra-agressive : {ultra_message}")
-                                else:
-                                    st.error(f"❌ Échec de la compression : {message}")
-                                
-                                # Clean up files on error
-                                try:
-                                    temp_file_path.unlink()
-                                    if compressed_path and compressed_path.exists():
-                                        compressed_path.unlink()
-                                except:
-                                    pass
-                
-                st.markdown("---")
+        # Determine processing needs - ALWAYS use aggressive compression for optimal results
+        needs_aac_conversion = file_extension == "aac"
+        needs_compression = file_size_mb > 5  # Use aggressive compression for files > 5MB for optimal results
+        
+        # Show processing info if needed
+        if needs_aac_conversion or needs_compression:
+            if needs_aac_conversion and needs_compression:
+                st.warning("🔄 Conversion AAC + Compression requise")
+            elif needs_aac_conversion:
+                st.warning("🔄 Conversion AAC → MP3 requise")
             else:
-                st.warning("⚠️ **FFmpeg non disponible** - La compression automatique n'est pas possible sur ce système.")
-                st.info("Pour installer FFmpeg : https://ffmpeg.org/download.html")
+                st.warning("🗜️ Compression agressive requise")
             
-            # Show manual compression recommendations
-            with st.expander("🛠️ Solutions de compression manuelles", expanded=not audio_helper.is_ffmpeg_available()):
-                st.markdown("### 📊 Estimation après compression")
-                st.success(f"Taille estimée après compression: **{estimated_size:.1f} MB** (réduction de {recommendations['estimated_reduction']})")
-                
-                st.markdown("### 🔧 Méthodes recommandées")
-                for method in recommendations["methods"]:
-                    st.write(f"• {method}")
-                
-                st.markdown("### 🛠️ Outils recommandés")
-                for tool in recommendations["tools"]:
-                    st.write(f"• {tool}")
-                
-                # Audacity instructions
-                st.markdown("### 📋 Instructions Audacity (étape par étape)")
-                audacity_instructions = audio_helper.get_audacity_instructions()
-                for instruction in audacity_instructions:
-                    st.write(instruction)
-                
-                # FFmpeg commands
-                st.markdown("### 💻 Commandes FFmpeg (utilisateurs avancés)")
-                ffmpeg_commands = audio_helper.get_ffmpeg_commands(
-                    "votre_fichier." + file_extension,
-                    "fichier_compresse.mp3"
-                )
-                st.code(ffmpeg_commands[0], language="bash")
-                
-                with st.expander("Voir plus de commandes FFmpeg"):
-                    for cmd in ffmpeg_commands[1:]:
-                        st.code(cmd, language="bash")
-            
-            return  # Exit early if file is too big - don't show process button
+            if not audio_helper.is_ffmpeg_available():
+                st.error("❌ FFmpeg requis pour le traitement automatique")
+                return
         
-        # Warning for large files (but under 25MB)
-        if file_size_mb > 15:
-            st.warning(f"""
-            ⚠️ **Fichier volumineux détecté** ({file_size_mb:.2f} MB)
-            
-            Le traitement peut prendre plus de temps. Assurez-vous d'avoir une connexion stable.
-            """)
-        
-        # Process button (only shown if file is valid size)
+        # Single process button - handles everything automatically
         if st.button("🚀 Traiter la session", type="primary"):
             # Save uploaded file
             audio_file_path = save_uploaded_file(uploaded_file)
             if not audio_file_path:
                 return
             
-            # Validate the saved file
-            is_valid, validation_message = transcription_service.validate_audio_file(audio_file_path)
-            if not is_valid:
-                st.error(f"❌ Validation échouée: {validation_message}")
-                # Clean up the saved file
-                try:
-                    audio_file_path.unlink()
-                except:
-                    pass
-                return
+            final_audio_path = audio_file_path
+            final_filename = uploaded_file.name
             
-            # Create session in database
             try:
+                # Step 1: Process file if needed (compression/conversion)
+                if needs_aac_conversion or needs_compression:
+                    if needs_aac_conversion and needs_compression:
+                        # AAC + Large file: Convert directly to compressed MP3
+                        with st.spinner("🔄 Conversion et compression..."):
+                            optimal_settings = audio_helper.get_optimal_compression_settings(file_size_mb, "aac")
+                            
+                            success, message, processed_path = audio_helper.compress_audio_file(
+                                audio_file_path,
+                                target_bitrate=optimal_settings['target_bitrate'],
+                                target_format="mp3",
+                                mono=optimal_settings['mono'],
+                                sample_rate=optimal_settings['sample_rate'],
+                                ultra_aggressive=True
+                            )
+                            
+                            if success and processed_path:
+                                processed_size_mb = processed_path.stat().st_size / (1024 * 1024)
+                                
+                                if processed_size_mb <= 25:
+                                    st.success(f"✅ Traitement réussi ({processed_size_mb:.1f} MB)")
+                                    try:
+                                        audio_file_path.unlink()
+                                    except:
+                                        pass
+                                    final_audio_path = processed_path
+                                    final_filename = f"{Path(uploaded_file.name).stem}_processed.mp3"
+                                else:
+                                    st.error(f"❌ Fichier encore trop volumineux ({processed_size_mb:.1f} MB)")
+                                    try:
+                                        audio_file_path.unlink()
+                                        processed_path.unlink()
+                                    except:
+                                        pass
+                                    
+                                    # Add instructions for manual compression and show logs
+                                    st.error("""
+                                    ### Compression plus intense requise
+                                    Ce fichier est particulièrement difficile à compresser.
+                                    
+                                    **Solutions:**
+                                    1. Réduire la durée de l'enregistrement
+                                    2. Utiliser un autre format (WAV ou FLAC)
+                                    3. Compresser manuellement avec Audacity (mono + 16kbps)
+                                    """)
+                                    
+                                    # Add a button to try extreme compression as a last resort
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        if st.button("🔥 Essayer compression extrême (8kbps)", type="primary"):
+                                            with st.spinner("Compression extrême en cours..."):
+                                                try:
+                                                    # Try extreme compression
+                                                    success, message, extreme_path = audio_helper.extreme_compress_audio_file(audio_file_path)
+                                                    
+                                                    if success and extreme_path:
+                                                        extreme_size_mb = extreme_path.stat().st_size / (1024 * 1024)
+                                                        
+                                                        if extreme_size_mb <= 25:
+                                                            st.success(f"✅ Compression extrême réussie ({extreme_size_mb:.1f} MB)")
+                                                            # Use this file for processing
+                                                            final_audio_path = extreme_path
+                                                            final_filename = f"{Path(uploaded_file.name).stem}_extreme.mp3"
+                                                            
+                                                            # Process this file
+                                                            # Create session in database
+                                                            with get_db_session() as db:
+                                                                new_session = Session(
+                                                                    title=f"Session {session_number}",
+                                                                    session_number=session_number,
+                                                                    date=datetime.combine(session_date, datetime.min.time()),
+                                                                    audio_file_path=str(final_audio_path),
+                                                                    audio_file_name=final_filename,
+                                                                    audio_file_size=final_audio_path.stat().st_size,
+                                                                    processing_status="uploaded"
+                                                                )
+                                                                db.add(new_session)
+                                                                db.commit()
+                                                                
+                                                                session_id = str(new_session.id)
+                                                            
+                                                            # Process the session
+                                                            st.success("✅ Fichier prêt - Démarrage du traitement...")
+                                                            process_session(session_id, final_audio_path)
+                                                            
+                                                        else:
+                                                            st.error(f"❌ Échec - Fichier encore trop volumineux même avec compression extrême ({extreme_size_mb:.1f} MB)")
+                                                            logger.error(f"EXTREME COMPRESSION STILL TOO LARGE: {extreme_size_mb:.2f} MB")
+                                                    else:
+                                                        st.error(f"❌ Échec de la compression extrême: {message}")
+                                                except Exception as e:
+                                                    st.error(f"❌ Erreur: {str(e)}")
+                                                    logger.error(f"EXTREME COMPRESSION ERROR: {str(e)}")
+                                    
+                                    # Add a button to show logs
+                                    with col2:
+                                        if st.button("📋 Afficher les logs de débogage"):
+                                            # Capture recent logs from the logger
+                                            with st.expander("Logs de compression (débogage)"):
+                                                # Get the log file path
+                                                log_path = Path("logs/app.log") if Path("logs/app.log").exists() else None
+                                                
+                                                if log_path:
+                                                    try:
+                                                        # Read the last 50 lines of the log file
+                                                        with open(log_path, "r") as f:
+                                                            log_lines = f.readlines()
+                                                            recent_logs = log_lines[-50:]
+                                                        
+                                                        # Display the logs
+                                                        st.code("".join(recent_logs), language="bash")
+                                                    except Exception as e:
+                                                        st.warning(f"Impossible de lire les logs: {e}")
+                                                else:
+                                                    # Try to get info from the logger directly
+                                                    st.code(f"""
+COMPRESSION INFO:
+- Fichier: {final_filename}
+- Taille initiale: {file_size_mb:.2f} MB
+- Format: {file_extension}
+- Paramètres: Compression agressive {optimal_settings if 'optimal_settings' in locals() else 'N/A'}
+- Résultat: Fichier encore trop volumineux ({processed_size_mb if 'processed_size_mb' in locals() else 'N/A'} MB)
+                                                    """, language="bash")
+                                    
+                                    return
+                    
+                    elif needs_aac_conversion:
+                        # AAC only: Convert with aggressive compression
+                        with st.spinner("🔄 Conversion AAC → MP3 agressive..."):
+                            optimal_settings = audio_helper.get_optimal_compression_settings(file_size_mb, "aac")
+                            
+                            success, message, converted_path = audio_helper.compress_audio_file(
+                                audio_file_path,
+                                target_bitrate=optimal_settings['target_bitrate'],
+                                target_format="mp3",
+                                mono=optimal_settings['mono'],
+                                sample_rate=optimal_settings['sample_rate'],
+                                ultra_aggressive=True
+                            )
+                            
+                            if success and converted_path:
+                                converted_size_mb = converted_path.stat().st_size / (1024 * 1024)
+                                st.success(f"✅ Conversion agressive réussie ({converted_size_mb:.1f} MB)")
+                                try:
+                                    audio_file_path.unlink()
+                                except:
+                                    pass
+                                final_audio_path = converted_path
+                                final_filename = f"{Path(uploaded_file.name).stem}_compressed.mp3"
+                            else:
+                                st.error(f"❌ Échec de la conversion : {message}")
+                                try:
+                                    audio_file_path.unlink()
+                                except:
+                                    pass
+                                return
+                    
+                    else:
+                        # Any file: Direct aggressive compression
+                        with st.spinner("🗜️ Compression agressive..."):
+                            optimal_settings = audio_helper.get_optimal_compression_settings(file_size_mb, file_extension)
+                            
+                            success, message, compressed_path = audio_helper.compress_audio_file(
+                                audio_file_path,
+                                target_bitrate=optimal_settings['target_bitrate'],
+                                target_format=optimal_settings['target_format'],
+                                mono=optimal_settings['mono'],
+                                sample_rate=optimal_settings['sample_rate'],
+                                ultra_aggressive=True
+                            )
+                            
+                            if success and compressed_path:
+                                compressed_size_mb = compressed_path.stat().st_size / (1024 * 1024)
+                                
+                                if compressed_size_mb <= 25:
+                                    st.success(f"✅ Compression agressive réussie ({compressed_size_mb:.1f} MB)")
+                                    try:
+                                        audio_file_path.unlink()
+                                    except:
+                                        pass
+                                    final_audio_path = compressed_path
+                                    final_filename = f"{Path(uploaded_file.name).stem}_compressed.{optimal_settings['target_format']}"
+                                else:
+                                    st.error(f"❌ Fichier encore trop volumineux ({compressed_size_mb:.1f} MB)")
+                                    try:
+                                        audio_file_path.unlink()
+                                        compressed_path.unlink()
+                                    except:
+                                        pass
+                                    
+                                    # Add instructions for manual compression and show logs
+                                    st.error("""
+                                    ### Compression plus intense requise
+                                    Ce fichier est particulièrement difficile à compresser.
+                                    
+                                    **Solutions:**
+                                    1. Réduire la durée de l'enregistrement
+                                    2. Utiliser un autre format (WAV ou FLAC)
+                                    3. Compresser manuellement avec Audacity (mono + 16kbps)
+                                    """)
+                                    
+                                    # Add a button to try extreme compression as a last resort
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        if st.button("🔥 Essayer compression extrême (8kbps)", type="primary"):
+                                            with st.spinner("Compression extrême en cours..."):
+                                                try:
+                                                    # Try extreme compression
+                                                    success, message, extreme_path = audio_helper.extreme_compress_audio_file(audio_file_path)
+                                                    
+                                                    if success and extreme_path:
+                                                        extreme_size_mb = extreme_path.stat().st_size / (1024 * 1024)
+                                                        
+                                                        if extreme_size_mb <= 25:
+                                                            st.success(f"✅ Compression extrême réussie ({extreme_size_mb:.1f} MB)")
+                                                            # Use this file for processing
+                                                            final_audio_path = extreme_path
+                                                            final_filename = f"{Path(uploaded_file.name).stem}_extreme.mp3"
+                                                            
+                                                            # Process this file
+                                                            # Create session in database
+                                                            with get_db_session() as db:
+                                                                new_session = Session(
+                                                                    title=f"Session {session_number}",
+                                                                    session_number=session_number,
+                                                                    date=datetime.combine(session_date, datetime.min.time()),
+                                                                    audio_file_path=str(final_audio_path),
+                                                                    audio_file_name=final_filename,
+                                                                    audio_file_size=final_audio_path.stat().st_size,
+                                                                    processing_status="uploaded"
+                                                                )
+                                                                db.add(new_session)
+                                                                db.commit()
+                                                                
+                                                                session_id = str(new_session.id)
+                                                            
+                                                            # Process the session
+                                                            st.success("✅ Fichier prêt - Démarrage du traitement...")
+                                                            process_session(session_id, final_audio_path)
+                                                            
+                                                        else:
+                                                            st.error(f"❌ Échec - Fichier encore trop volumineux même avec compression extrême ({extreme_size_mb:.1f} MB)")
+                                                            logger.error(f"EXTREME COMPRESSION STILL TOO LARGE: {extreme_size_mb:.2f} MB")
+                                                    else:
+                                                        st.error(f"❌ Échec de la compression extrême: {message}")
+                                                except Exception as e:
+                                                    st.error(f"❌ Erreur: {str(e)}")
+                                                    logger.error(f"EXTREME COMPRESSION ERROR: {str(e)}")
+                                    
+                                    # Add a button to show logs
+                                    with col2:
+                                        if st.button("📋 Afficher les logs de débogage"):
+                                            # Capture recent logs from the logger
+                                            with st.expander("Logs de compression (débogage)"):
+                                                # Get the log file path
+                                                log_path = Path("logs/app.log") if Path("logs/app.log").exists() else None
+                                                
+                                                if log_path:
+                                                    try:
+                                                        # Read the last 50 lines of the log file
+                                                        with open(log_path, "r") as f:
+                                                            log_lines = f.readlines()
+                                                            recent_logs = log_lines[-50:]
+                                                        
+                                                        # Display the logs
+                                                        st.code("".join(recent_logs), language="bash")
+                                                    except Exception as e:
+                                                        st.warning(f"Impossible de lire les logs: {e}")
+                                                else:
+                                                    # Try to get info from the logger directly
+                                                    st.code(f"""
+COMPRESSION INFO:
+- Fichier: {final_filename}
+- Taille initiale: {file_size_mb:.2f} MB
+- Format: {file_extension}
+- Paramètres: Compression agressive {optimal_settings if 'optimal_settings' in locals() else 'N/A'}
+- Résultat: Fichier encore trop volumineux ({compressed_size_mb if 'compressed_size_mb' in locals() else 'N/A'} MB)
+                                                    """, language="bash")
+                                    
+                                    return
+                            else:
+                                st.error(f"❌ Échec de la compression : {message}")
+                                try:
+                                    audio_file_path.unlink()
+                                except:
+                                    pass
+                                return
+                
+                # Step 2: Validate the final file
+                is_valid, validation_message = transcription_service.validate_audio_file(final_audio_path)
+                if not is_valid:
+                    st.error(f"❌ Validation échouée: {validation_message}")
+                    try:
+                        final_audio_path.unlink()
+                    except:
+                        pass
+                    return
+                
+                # Step 3: Create session in database
                 with get_db_session() as db:
                     new_session = Session(
                         title=f"Session {session_number}",  # Will be updated after analysis
                         session_number=session_number,
                         date=datetime.combine(session_date, datetime.min.time()),
-                        audio_file_path=str(audio_file_path),
-                        audio_file_name=uploaded_file.name,
-                        audio_file_size=len(uploaded_file.getbuffer()),
+                        audio_file_path=str(final_audio_path),
+                        audio_file_name=final_filename,
+                        audio_file_size=final_audio_path.stat().st_size,
                         processing_status="uploaded"
                     )
                     db.add(new_session)
@@ -454,15 +552,17 @@ def upload_page():
                     
                     session_id = str(new_session.id)
                 
-                # Process the session
-                process_session(session_id, audio_file_path)
+                # Step 4: Automatically process the session (transcription + analysis)
+                st.success("✅ Fichier prêt - Démarrage du traitement...")
+                process_session(session_id, final_audio_path)
                 
             except Exception as e:
-                logger.error(f"Failed to create session: {e}")
-                st.error(f"Failed to create session: {e}")
-                # Clean up the saved file
+                logger.error(f"Failed to process uploaded file: {e}")
+                st.error(f"Erreur lors du traitement : {e}")
+                # Clean up any files
                 try:
-                    audio_file_path.unlink()
+                    if final_audio_path and final_audio_path.exists():
+                        final_audio_path.unlink()
                 except:
                     pass
 
@@ -542,9 +642,10 @@ def sessions_page():
                                     for event in session.key_events:
                                         st.write(f"• {event}")
                         
-                        # Transcript (collapsible)
+                        # Transcript (collapsible with checkbox)
                         if session.transcript:
-                            with st.expander("📜 Voir la transcription complète"):
+                            show_transcript = st.checkbox("📜 Voir la transcription complète", key=f"transcript_{session.id}")
+                            if show_transcript:
                                 st.text_area(
                                     "Transcription",
                                     value=session.transcript,

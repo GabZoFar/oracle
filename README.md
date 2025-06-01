@@ -69,7 +69,29 @@ A modern Streamlit application for Game Masters to transcribe, analyze, and mana
 - M4A
 - FLAC
 - OGG
-- AAC
+- AAC (automatically converted to MP3)
+
+### 🔄 AAC Format Handling (NEW!)
+
+Since OpenAI Whisper doesn't support AAC format, the application now includes **automatic AAC to MP3 conversion**:
+
+- **Automatic detection** of AAC files during upload
+- **Lossless conversion** to high-quality MP3 (320 kbps)
+- **Seamless integration** with FFmpeg
+- **Automatic processing** - no manual intervention required
+- **Quality preservation** - maintains original audio quality
+- **Transparent workflow** - happens automatically when you click "🚀 Traiter la session"
+
+When you upload an AAC file:
+1. 🔍 App detects AAC format automatically
+2. ⚠️ Shows what will be done (conversion + optional compression)
+3. 🚀 Click "Traiter la session" - everything happens automatically
+4. 🔄 Converts to high-quality MP3 (320 kbps)
+5. 🗜️ Compresses if needed to fit under 25MB
+6. ✅ Processes the final optimized file
+7. 🧹 Cleans up temporary files
+
+**Requirements**: FFmpeg must be installed for automatic conversion. See [FFmpeg Installation](#ffmpeg-installation) section below.
 
 ## 🏗️ Project Structure
 
@@ -105,9 +127,10 @@ maitre-joueur/
 ### 1. Upload a Session
 1. Navigate to "📁 Nouvelle Session"
 2. Enter session number and date
-3. Upload your audio file
-4. Click "🚀 Traiter la session"
-5. Wait for transcription and AI analysis to complete
+3. Upload your audio file (any supported format including AAC)
+4. App automatically detects if conversion/compression is needed
+5. Click "🚀 Traiter la session" - all processing happens automatically
+6. Wait for transcription and AI analysis to complete
 
 ### 2. View Sessions
 1. Navigate to "📚 Sessions Existantes"
@@ -143,28 +166,44 @@ Each processed session includes:
 ### Audio Settings
 - Maximum file size: 500MB (configurable)
 - ⚠️ **OpenAI Whisper API limit: 25MB** - files larger than this will need compression
-- Supported formats: MP3, WAV, M4A, FLAC, OGG, AAC
+- Supported formats: MP3, WAV, M4A, FLAC, OGG, AAC (auto-converted to MP3)
 - Language: French (configurable in transcription service)
 - **Built-in compression recommendations** for oversized files
+- **Automatic AAC conversion** for Whisper compatibility
 
-## 🗜️ Large File Handling
+## 🗜️ Intelligent File Processing
 
-The application includes intelligent handling for large audio files:
+The application includes **fully automatic** handling for all audio files:
+
+### 🤖 Automatic Processing Pipeline
+When you upload any audio file, the app automatically:
+
+1. **🔍 Detects file format and size**
+2. **🔄 Converts AAC to MP3** (if needed) - OpenAI doesn't support AAC
+3. **🗜️ Applies aggressive compression** (if > 24MB) - to fit Whisper's 25MB limit
+4. **⚡ Merges conversion + compression** (for AAC files > 24MB) - one-step processing
+5. **✅ Validates final file** - ensures compatibility
+6. **🚀 Processes immediately** - transcription and AI analysis
+
+**No manual intervention required** - just click "🚀 Traiter la session" and everything happens automatically!
 
 ### File Size Limits
 - **Application limit**: 500MB (configurable via `MAX_FILE_SIZE_MB`)
 - **Whisper API limit**: 25MB (OpenAI's hard limit)
+- **Automatic compression**: Files > 24MB are automatically compressed
 
-### 🤖 Automatic Compression (NEW!)
-When you upload a file larger than 25MB, the app now offers **automatic compression** if FFmpeg is installed:
+### 🎯 Smart Compression Settings
+The app uses aggressive compression by default for optimal results:
 
-- **One-click compression** with optimal settings
-- **Smart parameter detection** based on file size and format
-- **Real-time progress** and compression statistics
-- **Automatic processing** after successful compression
+- **WAV files**: Convert to MP3 (~90% size reduction)
+- **All large files**: Direct aggressive compression (32kbps, 24kbps, or 16kbps bitrates)
+- **Stereo to mono**: Automatic conversion for maximum compression
+- **Sample rate reduction**: 44.1kHz → 16kHz or 11kHz for extreme cases
+- **AAC + Large files**: Combined conversion and compression in one step
+- **No standard compression**: Goes directly to aggressive settings for efficiency
 
-#### FFmpeg Installation
-The app will detect if FFmpeg is available. If not installed:
+### 📦 FFmpeg Installation
+Automatic processing requires FFmpeg. The app will detect if it's available:
 
 **macOS (recommended):**
 ```bash
@@ -183,24 +222,7 @@ choco install ffmpeg
 winget install FFmpeg
 ```
 
-**Installation Helper:**
-```bash
-uv run python install_ffmpeg.py
-```
-
-### Automatic Compression Guidance
-When you upload a file larger than 25MB, the app provides:
-- **Estimated compressed size** based on your file format
-- **Step-by-step compression instructions** for Audacity
-- **FFmpeg commands** for advanced users
-- **Format-specific recommendations** (WAV→MP3 can reduce size by 90%)
-
-### Supported Compression Methods
-- **WAV to MP3**: ~90% size reduction
-- **FLAC to MP3**: ~70% size reduction  
-- **Bitrate reduction**: 320kbps → 128kbps or lower
-- **Mono conversion**: ~50% reduction for stereo files
-- **Sample rate reduction**: 44.1kHz → 22kHz
+If FFmpeg is not available, the app will show an error and suggest manual compression alternatives.
 
 ## 🧪 Development
 

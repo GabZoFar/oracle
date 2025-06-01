@@ -64,6 +64,13 @@ class AudioCompressionHelper:
             return False, "FFmpeg n'est pas disponible sur ce système", None
         
         try:
+            # Get input file information
+            input_size_mb = input_path.stat().st_size / (1024 * 1024)
+            input_format = input_path.suffix.lower().lstrip('.')
+            
+            logger.info(f"COMPRESSION START - Input: {input_path.name} ({input_size_mb:.2f} MB, {input_format})")
+            logger.info(f"Compression settings: bitrate={target_bitrate}kbps, format={target_format}, mono={mono}, sample_rate={sample_rate}, ultra_aggressive={ultra_aggressive}")
+            
             # Generate output path if not provided
             if output_path is None:
                 input_stem = input_path.stem
@@ -112,7 +119,9 @@ class AudioCompressionHelper:
             # Overwrite output file and add output path
             cmd.extend(["-y", str(output_path)])
             
-            logger.info(f"Running FFmpeg command: {' '.join(cmd)}")
+            # Log the full command for debugging
+            cmd_str = ' '.join(cmd)
+            logger.info(f"FFMPEG COMMAND: {cmd_str}")
             
             # Run FFmpeg
             result = subprocess.run(
@@ -126,27 +135,38 @@ class AudioCompressionHelper:
                 # Check if output file was created and has reasonable size
                 if output_path.exists() and output_path.stat().st_size > 1000:  # At least 1KB
                     output_size_mb = output_path.stat().st_size / (1024 * 1024)
-                    input_size_mb = input_path.stat().st_size / (1024 * 1024)
                     reduction_percent = ((input_size_mb - output_size_mb) / input_size_mb) * 100
+                    
+                    # Log detailed compression results
+                    logger.info(f"COMPRESSION SUCCESS - Output: {output_path.name} ({output_size_mb:.2f} MB)")
+                    logger.info(f"Compression ratio: {input_size_mb:.2f} MB → {output_size_mb:.2f} MB ({reduction_percent:.2f}% reduction)")
+                    
+                    # Check if we achieved enough compression
+                    if output_size_mb > 25:
+                        logger.warning(f"OUTPUT STILL TOO LARGE: {output_size_mb:.2f} MB > 25 MB limit")
                     
                     compression_type = "ultra-agressive" if ultra_aggressive else "standard"
                     message = f"Compression {compression_type} réussie ! Taille réduite de {input_size_mb:.1f} MB à {output_size_mb:.1f} MB ({reduction_percent:.1f}% de réduction)"
                     return True, message, output_path
                 else:
+                    logger.error(f"OUTPUT FILE INVALID: File missing or too small")
                     return False, "Le fichier compressé n'a pas été créé correctement", None
             else:
                 error_msg = result.stderr if result.stderr else "Erreur inconnue"
+                logger.error(f"FFMPEG ERROR: {error_msg}")
                 return False, f"Erreur FFmpeg: {error_msg}", None
                 
         except subprocess.TimeoutExpired:
+            logger.error("COMPRESSION TIMEOUT: Process took too long")
             return False, "La compression a pris trop de temps (timeout)", None
         except Exception as e:
-            logger.error(f"Error during compression: {e}")
+            logger.error(f"COMPRESSION ERROR: {str(e)}")
             return False, f"Erreur lors de la compression: {str(e)}", None
     
     def get_optimal_compression_settings(self, file_size_mb: float, file_format: str) -> Dict[str, any]:
         """
         Get optimal compression settings based on file size and format.
+        Now returns aggressive settings by default since we skip standard compression.
         
         Args:
             file_size_mb: Current file size in MB
@@ -155,33 +175,58 @@ class AudioCompressionHelper:
         Returns:
             Dictionary with optimal settings
         """
-        settings = {
-            "target_format": "mp3",
-            "target_bitrate": 64,  # Start with lower bitrate
-            "mono": True,  # Force mono for better compression
-            "sample_rate": 22050,  # Reduce sample rate by default
-            "estimated_size_mb": 0
-        }
+        # Special ultra-aggressive settings for AAC files, which need more compression
+        if file_format.lower() == "aac":
+            settings = {
+                "target_format": "mp3",
+                "target_bitrate": 16,  # Ultra-low bitrate for AAC files
+                "mono": True,  # Force mono
+                "sample_rate": 11025,  # Very low sample rate for maximum compression
+                "estimated_size_mb": 0
+            }
+        else:
+            # Default settings for other formats
+            settings = {
+                "target_format": "mp3",
+                "target_bitrate": 32,  # Start with aggressive bitrate
+                "mono": True,  # Force mono for better compression
+                "sample_rate": 16000,  # Aggressive sample rate reduction
+                "estimated_size_mb": 0
+            }
         
-        # Much more aggressive settings based on file size
+        # Aggressive settings based on file size - go directly to low bitrates
         if file_size_mb > 100:
-            # Very large files - extremely aggressive compression
+            # Very large files - ultra aggressive compression
             settings.update({
-                "target_bitrate": 32,  # Very low bitrate
+                "target_bitrate": 12,  # Ultra low bitrate (even lower than before)
                 "mono": True,
-                "sample_rate": 16000  # Even lower sample rate
+                "sample_rate": 8000  # Minimum usable sample rate
             })
         elif file_size_mb > 50:
             # Large files - very aggressive compression
             settings.update({
-                "target_bitrate": 48,  # Low bitrate
+                "target_bitrate": 16,  # Very low bitrate
                 "mono": True,
-                "sample_rate": 22050
+                "sample_rate": 11025
             })
         elif file_size_mb > 25:
             # Medium files - aggressive compression
             settings.update({
-                "target_bitrate": 64,
+                "target_bitrate": 24,
+                "mono": True,
+                "sample_rate": 11025
+            })
+        elif file_size_mb > 10:
+            # Smaller files that still need compression - moderate aggressive
+            settings.update({
+                "target_bitrate": 32,
+                "mono": True,
+                "sample_rate": 16000
+            })
+        else:
+            # Very small files - ensure good quality but still compressed
+            settings.update({
+                "target_bitrate": 48,
                 "mono": True,
                 "sample_rate": 22050
             })
@@ -197,23 +242,9 @@ class AudioCompressionHelper:
         # If still too large, make it even more aggressive
         if settings["estimated_size_mb"] > 24:
             settings.update({
-                "target_bitrate": 24,  # Extremely low bitrate
+                "target_bitrate": 8,  # Extreme low bitrate for desperate cases
                 "mono": True,
-                "sample_rate": 16000
-            })
-            settings["estimated_size_mb"] = self.estimate_compressed_size(
-                file_size_mb, 
-                file_format, 
-                settings["target_format"], 
-                settings["target_bitrate"]
-            )
-        
-        # Final fallback - ultra aggressive
-        if settings["estimated_size_mb"] > 24:
-            settings.update({
-                "target_bitrate": 16,  # Ultra low bitrate
-                "mono": True,
-                "sample_rate": 11025  # Very low sample rate
+                "sample_rate": 8000  # Absolute minimum sample rate
             })
             settings["estimated_size_mb"] = self.estimate_compressed_size(
                 file_size_mb, 
@@ -363,21 +394,23 @@ class AudioCompressionHelper:
         compression_ratios = {
             ("wav", "mp3"): 0.05,  # WAV to MP3 is ~95% reduction with aggressive settings
             ("flac", "mp3"): 0.15,  # FLAC to MP3 is ~85% reduction
-            ("m4a", "mp3"): 0.25,   # M4A to MP3 is ~75% reduction
-            ("aac", "mp3"): 0.25,   # AAC to MP3 is ~75% reduction (similar to M4A)
-            ("mp3", "mp3"): 0.4,    # MP3 to lower quality MP3 is ~60% reduction
+            ("m4a", "mp3"): 0.20,   # M4A to MP3 is ~80% reduction
+            ("aac", "mp3"): 0.15,   # AAC to MP3 is ~85% reduction (more aggressive than before)
+            ("mp3", "mp3"): 0.3,    # MP3 to lower quality MP3 is ~70% reduction
         }
         
         ratio = compression_ratios.get((original_format.lower(), target_format.lower()), 0.3)
         
-        # Adjust based on bitrate (64kbps is new baseline, not 128)
-        bitrate_factor = bitrate / 64
+        # Adjust based on bitrate (32kbps is new baseline, not 64)
+        bitrate_factor = bitrate / 32
         
         # Additional reduction for very low bitrates
-        if bitrate <= 32:
-            bitrate_factor *= 0.5  # Extra 50% reduction for ultra-low bitrates
-        elif bitrate <= 48:
-            bitrate_factor *= 0.7  # Extra 30% reduction for very low bitrates
+        if bitrate <= 16:
+            bitrate_factor *= 0.4  # Extra 60% reduction for ultra-low bitrates
+        elif bitrate <= 24:
+            bitrate_factor *= 0.5  # Extra 50% reduction for very low bitrates
+        elif bitrate <= 32:
+            bitrate_factor *= 0.7  # Extra 30% reduction for low bitrates
         
         estimated_size = original_size_mb * ratio * bitrate_factor
         return max(estimated_size, 0.5)  # Minimum 0.5MB
@@ -435,6 +468,155 @@ class AudioCompressionHelper:
             )
         
         return instructions
+    
+    def convert_aac_to_mp3(
+        self, 
+        input_path: Path, 
+        output_path: Optional[Path] = None
+    ) -> Tuple[bool, str, Optional[Path]]:
+        """
+        Convert AAC file to MP3 losslessly for OpenAI Whisper compatibility.
+        
+        Args:
+            input_path: Path to the input AAC file
+            output_path: Path for the output file (optional, will generate if None)
+            
+        Returns:
+            Tuple of (success, message, output_path)
+        """
+        if not self.ffmpeg_available:
+            return False, "FFmpeg n'est pas disponible sur ce système", None
+        
+        try:
+            # Generate output path if not provided
+            if output_path is None:
+                input_stem = input_path.stem
+                output_path = input_path.parent / f"{input_stem}_converted.mp3"
+            
+            # Build FFmpeg command for lossless conversion
+            # Use high quality settings to preserve audio quality
+            cmd = [
+                "ffmpeg", "-i", str(input_path),
+                "-codec:a", "libmp3lame",
+                "-b:a", "320k",  # High bitrate to preserve quality
+                "-q:a", "0",     # Highest quality
+                "-y",            # Overwrite output file
+                str(output_path)
+            ]
+            
+            logger.info(f"Converting AAC to MP3: {' '.join(cmd)}")
+            
+            # Run FFmpeg
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+            
+            if result.returncode == 0:
+                # Check if output file was created and has reasonable size
+                if output_path.exists() and output_path.stat().st_size > 1000:  # At least 1KB
+                    output_size_mb = output_path.stat().st_size / (1024 * 1024)
+                    input_size_mb = input_path.stat().st_size / (1024 * 1024)
+                    
+                    message = f"Conversion AAC → MP3 réussie ! Taille: {input_size_mb:.1f} MB → {output_size_mb:.1f} MB"
+                    return True, message, output_path
+                else:
+                    return False, "Le fichier MP3 converti n'a pas été créé correctement", None
+            else:
+                error_msg = result.stderr if result.stderr else "Erreur inconnue"
+                return False, f"Erreur FFmpeg lors de la conversion: {error_msg}", None
+                
+        except subprocess.TimeoutExpired:
+            return False, "La conversion a pris trop de temps (timeout)", None
+        except Exception as e:
+            logger.error(f"Error during AAC to MP3 conversion: {e}")
+            return False, f"Erreur lors de la conversion: {str(e)}", None
+    
+    def extreme_compress_audio_file(
+        self, 
+        input_path: Path, 
+        output_path: Optional[Path] = None
+    ) -> Tuple[bool, str, Optional[Path]]:
+        """
+        Apply extreme compression to an audio file, forcing 8kbps mono output.
+        This is a last resort for difficult files.
+        
+        Args:
+            input_path: Path to the input audio file
+            output_path: Path for the output file (optional, will generate if None)
+            
+        Returns:
+            Tuple of (success, message, output_path)
+        """
+        if not self.ffmpeg_available:
+            return False, "FFmpeg n'est pas disponible sur ce système", None
+        
+        try:
+            # Get input file information
+            input_size_mb = input_path.stat().st_size / (1024 * 1024)
+            input_format = input_path.suffix.lower().lstrip('.')
+            
+            logger.info(f"EXTREME COMPRESSION START - Input: {input_path.name} ({input_size_mb:.2f} MB, {input_format})")
+            
+            # Generate output path if not provided
+            if output_path is None:
+                input_stem = input_path.stem
+                output_path = input_path.parent / f"{input_stem}_extreme_compressed.mp3"
+            
+            # Build FFmpeg command with most extreme settings possible
+            cmd = [
+                "ffmpeg", "-i", str(input_path),
+                "-codec:a", "libmp3lame",
+                "-b:a", "8k",             # Ultra-low 8kbps bitrate
+                "-q:a", "9",              # Lowest quality
+                "-ac", "1",               # Force mono
+                "-ar", "8000",            # Lowest reasonable sample rate
+                "-compression_level", "9", # Maximum compression
+                "-cutoff", "3000",        # Extreme low-pass filter (telephone quality)
+                "-joint_stereo", "1",     # Joint stereo
+                "-reservoir", "0",        # Disable bit reservoir
+                "-abr", "1",              # Average bitrate encoding
+                "-y",                     # Overwrite output
+                str(output_path)
+            ]
+            
+            # Log the full command for debugging
+            cmd_str = ' '.join(cmd)
+            logger.info(f"EXTREME FFMPEG COMMAND: {cmd_str}")
+            
+            # Run FFmpeg
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+            
+            if result.returncode == 0:
+                # Check if output file was created and has reasonable size
+                if output_path.exists() and output_path.stat().st_size > 1000:  # At least 1KB
+                    output_size_mb = output_path.stat().st_size / (1024 * 1024)
+                    reduction_percent = ((input_size_mb - output_size_mb) / input_size_mb) * 100
+                    
+                    # Log detailed compression results
+                    logger.info(f"EXTREME COMPRESSION SUCCESS - Output: {output_path.name} ({output_size_mb:.2f} MB)")
+                    logger.info(f"Extreme compression ratio: {input_size_mb:.2f} MB → {output_size_mb:.2f} MB ({reduction_percent:.2f}% reduction)")
+                    
+                    message = f"Compression extrême réussie ! Taille réduite de {input_size_mb:.1f} MB à {output_size_mb:.1f} MB ({reduction_percent:.1f}% de réduction)"
+                    return True, message, output_path
+                else:
+                    logger.error(f"EXTREME OUTPUT FILE INVALID: File missing or too small")
+                    return False, "Le fichier compressé n'a pas été créé correctement", None
+            else:
+                error_msg = result.stderr if result.stderr else "Erreur inconnue"
+                logger.error(f"EXTREME FFMPEG ERROR: {error_msg}")
+                return False, f"Erreur FFmpeg: {error_msg}", None
+                
+        except Exception as e:
+            logger.error(f"EXTREME COMPRESSION ERROR: {str(e)}")
+            return False, f"Erreur lors de la compression extrême: {str(e)}", None
 
 
 # Global helper instance
