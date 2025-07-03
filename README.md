@@ -49,7 +49,7 @@ A modern Streamlit application for Game Masters to transcribe, analyze, and mana
    OPENAI_API_KEY=your_openai_api_key_here
    DATABASE_URL=sqlite:///data/sessions.db
    UPLOAD_DIR=data/audio
-   MAX_FILE_SIZE_MB=500
+   MAX_FILE_SIZE_MB=200
    DEBUG=False
    LOG_LEVEL=INFO
    ```
@@ -159,12 +159,12 @@ Each processed session includes:
 | `MISTRAL_API_KEY` | Mistral API key (optional) | - |
 | `DATABASE_URL` | Database connection string | `sqlite:///data/sessions.db` |
 | `UPLOAD_DIR` | Audio files directory | `data/audio` |
-| `MAX_FILE_SIZE_MB` | Maximum file size in MB | `500` |
+| `MAX_FILE_SIZE_MB` | Maximum file size in MB | `200` |
 | `DEBUG` | Enable debug mode | `False` |
 | `LOG_LEVEL` | Logging level | `INFO` |
 
 ### Audio Settings
-- Maximum file size: 500MB (configurable)
+- Maximum file size: 200MB (configurable)
 - ⚠️ **OpenAI Whisper API limit: 25MB** - files larger than this will need compression
 - Supported formats: MP3, WAV, M4A, FLAC, OGG, AAC (auto-converted to MP3)
 - Language: French (configurable in transcription service)
@@ -188,7 +188,7 @@ When you upload any audio file, the app automatically:
 **No manual intervention required** - just click "🚀 Traiter la session" and everything happens automatically!
 
 ### File Size Limits
-- **Application limit**: 500MB (configurable via `MAX_FILE_SIZE_MB`)
+- **Application limit**: 200MB (configurable via `MAX_FILE_SIZE_MB`)
 - **Whisper API limit**: 25MB (OpenAI's hard limit)
 - **Automatic compression**: Files > 24MB are automatically compressed
 

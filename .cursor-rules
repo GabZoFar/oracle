@@ -1,5 +1,10 @@
 # Cursor Rules for Maître Joueur RPG Session Management Tool
 
+## Rules Structure
+- Additional rules are located in .cursor/rules/ directory
+- CODE_TASKS.md contains guidelines for code implementation approach
+- Project documentation has been moved to .cursor/rules/
+
 ## Package Management
 - ALWAYS use `uv` instead of `pip` for package management
 - Use `uv add <package>` to add dependencies
@@ -8,8 +13,8 @@
 - Update pyproject.toml when adding new dependencies
 
 ## Project Structure
-- Follow the structure defined in PROJECT_STRUCTURE.md
-- Update PROJECT_STRUCTURE.md whenever making significant changes to the project
+- Follow the structure defined in .cursor/rules/PROJECT_STRUCTURE.md
+- Update .cursor/rules/PROJECT_STRUCTURE.md whenever making significant changes to the project
 - Keep all source code in the `src/` directory
 - Use proper module organization with `__init__.py` files
 
@@ -65,7 +70,7 @@
 - Update README.md with setup and usage instructions
 - Document all public functions and classes
 - Include examples in docstrings
-- Keep PROJECT_STRUCTURE.md current with changes
+- Keep .cursor/rules/PROJECT_STRUCTURE.md current with changes
 - Update these cursor rules when project evolves
 
 ## Git Workflow
@@ -89,11 +94,12 @@
 - Validate user inputs before processing
 
 ## Development Workflow
-1. Check PROJECT_STRUCTURE.md before starting new features
+1. Check .cursor/rules/PROJECT_STRUCTURE.md before starting new features
 2. Update project structure document if making architectural changes
-3. Use uv for all package management operations
-4. Test locally before committing
-5. Update documentation alongside code changes 
+3. Follow the task approach guidelines in .cursor/rules/CODE_TASKS.md
+4. Use uv for all package management operations
+5. Test locally before committing
+6. Update documentation alongside code changes 
 
 ## Project Structure
 maitre-joueur/

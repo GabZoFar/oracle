@@ -1,0 +1,28 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Development Workflow
+
+1. Check PROJECT_STRUCTURE.md before starting new features
+2. Update project structure document if making architectural changes
+3. Follow the task approach guidelines in code_tasks.mdc
+4. Use uv for all package management operations
+5. Test locally before committing
+6. Update documentation alongside code changes
+
+## Git Workflow
+- Use conventional commit messages
+- Create feature branches for new functionality
+- Keep commits atomic and focused
+- Update documentation in the same commit as code changes
+
+## Error Handling
+- Use try-catch blocks for external API calls
+- Provide user-friendly error messages
+- Log errors for debugging
+- Implement graceful degradation
+- Validate user inputs before processing
+
+@code_tasks

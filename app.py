@@ -287,80 +287,65 @@ def upload_page():
                                     # Add a button to try extreme compression as a last resort
                                     col1, col2 = st.columns(2)
                                     with col1:
-                                        if st.button("🔥 Essayer compression extrême (8kbps)", type="primary"):
-                                            with st.spinner("Compression extrême en cours..."):
-                                                try:
-                                                    # Try extreme compression
-                                                    success, message, extreme_path = audio_helper.extreme_compress_audio_file(audio_file_path)
+                                        if st.button("🔥 Essayer compression extrême (8kbps)", type="primary", key="extreme_compression_btn"):
+                                            st.session_state.extreme_compression_clicked = True
+                                            st.rerun()
+                                    
+                                    # Use session state to execute the compression logic after rerun
+                                    if st.session_state.extreme_compression_clicked:
+                                        with st.spinner("Compression extrême en cours..."):
+                                            try:
+                                                # Try extreme compression
+                                                success, message, extreme_path = audio_helper.extreme_compress_audio_file(audio_file_path)
+                                                
+                                                # Reset the state after processing
+                                                st.session_state.extreme_compression_clicked = False
+                                                
+                                                if success and extreme_path:
+                                                    extreme_size_mb = extreme_path.stat().st_size / (1024 * 1024)
                                                     
-                                                    if success and extreme_path:
-                                                        extreme_size_mb = extreme_path.stat().st_size / (1024 * 1024)
+                                                    if extreme_size_mb <= 25:
+                                                        st.success(f"✅ Compression extrême réussie ({extreme_size_mb:.1f} MB)")
+                                                        # Use this file for processing
+                                                        final_audio_path = extreme_path
+                                                        final_filename = f"{Path(uploaded_file.name).stem}_extreme.mp3"
                                                         
-                                                        if extreme_size_mb <= 25:
-                                                            st.success(f"✅ Compression extrême réussie ({extreme_size_mb:.1f} MB)")
-                                                            # Use this file for processing
-                                                            final_audio_path = extreme_path
-                                                            final_filename = f"{Path(uploaded_file.name).stem}_extreme.mp3"
+                                                        # Process this file
+                                                        # Create session in database
+                                                        with get_db_session() as db:
+                                                            new_session = Session(
+                                                                title=f"Session {session_number}",
+                                                                session_number=session_number,
+                                                                date=datetime.combine(session_date, datetime.min.time()),
+                                                                audio_file_path=str(final_audio_path),
+                                                                audio_file_name=final_filename,
+                                                                audio_file_size=final_audio_path.stat().st_size,
+                                                                processing_status="uploaded"
+                                                            )
+                                                            db.add(new_session)
+                                                            db.commit()
                                                             
-                                                            # Process this file
-                                                            # Create session in database
-                                                            with get_db_session() as db:
-                                                                new_session = Session(
-                                                                    title=f"Session {session_number}",
-                                                                    session_number=session_number,
-                                                                    date=datetime.combine(session_date, datetime.min.time()),
-                                                                    audio_file_path=str(final_audio_path),
-                                                                    audio_file_name=final_filename,
-                                                                    audio_file_size=final_audio_path.stat().st_size,
-                                                                    processing_status="uploaded"
-                                                                )
-                                                                db.add(new_session)
-                                                                db.commit()
-                                                                
-                                                                session_id = str(new_session.id)
-                                                            
-                                                            # Process the session
-                                                            st.success("✅ Fichier prêt - Démarrage du traitement...")
-                                                            process_session(session_id, final_audio_path)
-                                                            
-                                                        else:
-                                                            st.error(f"❌ Échec - Fichier encore trop volumineux même avec compression extrême ({extreme_size_mb:.1f} MB)")
-                                                            logger.error(f"EXTREME COMPRESSION STILL TOO LARGE: {extreme_size_mb:.2f} MB")
+                                                            session_id = str(new_session.id)
+                                                        
+                                                        # Process the session
+                                                        st.success("✅ Fichier prêt - Démarrage du traitement...")
+                                                        process_session(session_id, final_audio_path)
+                                                        
                                                     else:
-                                                        st.error(f"❌ Échec de la compression extrême: {message}")
-                                                except Exception as e:
-                                                    st.error(f"❌ Erreur: {str(e)}")
-                                                    logger.error(f"EXTREME COMPRESSION ERROR: {str(e)}")
+                                                        st.error(f"❌ Échec - Fichier encore trop volumineux même avec compression extrême ({extreme_size_mb:.1f} MB)")
+                                                        logger.error(f"EXTREME COMPRESSION STILL TOO LARGE: {extreme_size_mb:.2f} MB")
+                                                else:
+                                                    st.error(f"❌ Échec de la compression extrême: {message}")
+                                            except Exception as e:
+                                                st.error(f"❌ Erreur: {str(e)}")
+                                                logger.error(f"EXTREME COMPRESSION ERROR: {str(e)}")
                                     
                                     # Add a button to show logs
                                     with col2:
-                                        if st.button("📋 Afficher les logs de débogage"):
-                                            # Capture recent logs from the logger
-                                            with st.expander("Logs de compression (débogage)"):
-                                                # Get the log file path
-                                                log_path = Path("logs/app.log") if Path("logs/app.log").exists() else None
-                                                
-                                                if log_path:
-                                                    try:
-                                                        # Read the last 50 lines of the log file
-                                                        with open(log_path, "r") as f:
-                                                            log_lines = f.readlines()
-                                                            recent_logs = log_lines[-50:]
-                                                        
-                                                        # Display the logs
-                                                        st.code("".join(recent_logs), language="bash")
-                                                    except Exception as e:
-                                                        st.warning(f"Impossible de lire les logs: {e}")
-                                                else:
-                                                    # Try to get info from the logger directly
-                                                    st.code(f"""
-COMPRESSION INFO:
-- Fichier: {final_filename}
-- Taille initiale: {file_size_mb:.2f} MB
-- Format: {file_extension}
-- Paramètres: Compression agressive {optimal_settings if 'optimal_settings' in locals() else 'N/A'}
-- Résultat: Fichier encore trop volumineux ({processed_size_mb if 'processed_size_mb' in locals() else 'N/A'} MB)
-                                                    """, language="bash")
+                                        if st.button("📋 Afficher les logs de débogage", key="show_logs_btn2"):
+                                            # Set a session state variable to show logs
+                                            st.session_state.show_debug_logs = True
+                                            st.rerun()
                                     
                                     return
                     
@@ -442,80 +427,65 @@ COMPRESSION INFO:
                                     # Add a button to try extreme compression as a last resort
                                     col1, col2 = st.columns(2)
                                     with col1:
-                                        if st.button("🔥 Essayer compression extrême (8kbps)", type="primary"):
-                                            with st.spinner("Compression extrême en cours..."):
-                                                try:
-                                                    # Try extreme compression
-                                                    success, message, extreme_path = audio_helper.extreme_compress_audio_file(audio_file_path)
+                                        if st.button("🔥 Essayer compression extrême (8kbps)", type="primary", key="extreme_compression_btn"):
+                                            st.session_state.extreme_compression_clicked = True
+                                            st.rerun()
+                                    
+                                    # Use session state to execute the compression logic after rerun
+                                    if st.session_state.extreme_compression_clicked:
+                                        with st.spinner("Compression extrême en cours..."):
+                                            try:
+                                                # Try extreme compression
+                                                success, message, extreme_path = audio_helper.extreme_compress_audio_file(audio_file_path)
+                                                
+                                                # Reset the state after processing
+                                                st.session_state.extreme_compression_clicked = False
+                                                
+                                                if success and extreme_path:
+                                                    extreme_size_mb = extreme_path.stat().st_size / (1024 * 1024)
                                                     
-                                                    if success and extreme_path:
-                                                        extreme_size_mb = extreme_path.stat().st_size / (1024 * 1024)
+                                                    if extreme_size_mb <= 25:
+                                                        st.success(f"✅ Compression extrême réussie ({extreme_size_mb:.1f} MB)")
+                                                        # Use this file for processing
+                                                        final_audio_path = extreme_path
+                                                        final_filename = f"{Path(uploaded_file.name).stem}_extreme.mp3"
                                                         
-                                                        if extreme_size_mb <= 25:
-                                                            st.success(f"✅ Compression extrême réussie ({extreme_size_mb:.1f} MB)")
-                                                            # Use this file for processing
-                                                            final_audio_path = extreme_path
-                                                            final_filename = f"{Path(uploaded_file.name).stem}_extreme.mp3"
+                                                        # Process this file
+                                                        # Create session in database
+                                                        with get_db_session() as db:
+                                                            new_session = Session(
+                                                                title=f"Session {session_number}",
+                                                                session_number=session_number,
+                                                                date=datetime.combine(session_date, datetime.min.time()),
+                                                                audio_file_path=str(final_audio_path),
+                                                                audio_file_name=final_filename,
+                                                                audio_file_size=final_audio_path.stat().st_size,
+                                                                processing_status="uploaded"
+                                                            )
+                                                            db.add(new_session)
+                                                            db.commit()
                                                             
-                                                            # Process this file
-                                                            # Create session in database
-                                                            with get_db_session() as db:
-                                                                new_session = Session(
-                                                                    title=f"Session {session_number}",
-                                                                    session_number=session_number,
-                                                                    date=datetime.combine(session_date, datetime.min.time()),
-                                                                    audio_file_path=str(final_audio_path),
-                                                                    audio_file_name=final_filename,
-                                                                    audio_file_size=final_audio_path.stat().st_size,
-                                                                    processing_status="uploaded"
-                                                                )
-                                                                db.add(new_session)
-                                                                db.commit()
-                                                                
-                                                                session_id = str(new_session.id)
-                                                            
-                                                            # Process the session
-                                                            st.success("✅ Fichier prêt - Démarrage du traitement...")
-                                                            process_session(session_id, final_audio_path)
-                                                            
-                                                        else:
-                                                            st.error(f"❌ Échec - Fichier encore trop volumineux même avec compression extrême ({extreme_size_mb:.1f} MB)")
-                                                            logger.error(f"EXTREME COMPRESSION STILL TOO LARGE: {extreme_size_mb:.2f} MB")
+                                                            session_id = str(new_session.id)
+                                                        
+                                                        # Process the session
+                                                        st.success("✅ Fichier prêt - Démarrage du traitement...")
+                                                        process_session(session_id, final_audio_path)
+                                                        
                                                     else:
-                                                        st.error(f"❌ Échec de la compression extrême: {message}")
-                                                except Exception as e:
-                                                    st.error(f"❌ Erreur: {str(e)}")
-                                                    logger.error(f"EXTREME COMPRESSION ERROR: {str(e)}")
+                                                        st.error(f"❌ Échec - Fichier encore trop volumineux même avec compression extrême ({extreme_size_mb:.1f} MB)")
+                                                        logger.error(f"EXTREME COMPRESSION STILL TOO LARGE: {extreme_size_mb:.2f} MB")
+                                                else:
+                                                    st.error(f"❌ Échec de la compression extrême: {message}")
+                                            except Exception as e:
+                                                st.error(f"❌ Erreur: {str(e)}")
+                                                logger.error(f"EXTREME COMPRESSION ERROR: {str(e)}")
                                     
                                     # Add a button to show logs
                                     with col2:
-                                        if st.button("📋 Afficher les logs de débogage"):
-                                            # Capture recent logs from the logger
-                                            with st.expander("Logs de compression (débogage)"):
-                                                # Get the log file path
-                                                log_path = Path("logs/app.log") if Path("logs/app.log").exists() else None
-                                                
-                                                if log_path:
-                                                    try:
-                                                        # Read the last 50 lines of the log file
-                                                        with open(log_path, "r") as f:
-                                                            log_lines = f.readlines()
-                                                            recent_logs = log_lines[-50:]
-                                                        
-                                                        # Display the logs
-                                                        st.code("".join(recent_logs), language="bash")
-                                                    except Exception as e:
-                                                        st.warning(f"Impossible de lire les logs: {e}")
-                                                else:
-                                                    # Try to get info from the logger directly
-                                                    st.code(f"""
-COMPRESSION INFO:
-- Fichier: {final_filename}
-- Taille initiale: {file_size_mb:.2f} MB
-- Format: {file_extension}
-- Paramètres: Compression agressive {optimal_settings if 'optimal_settings' in locals() else 'N/A'}
-- Résultat: Fichier encore trop volumineux ({compressed_size_mb if 'compressed_size_mb' in locals() else 'N/A'} MB)
-                                                    """, language="bash")
+                                        if st.button("📋 Afficher les logs de débogage", key="show_logs_btn2"):
+                                            # Set a session state variable to show logs
+                                            st.session_state.show_debug_logs = True
+                                            st.rerun()
                                     
                                     return
                             else:
@@ -525,6 +495,35 @@ COMPRESSION INFO:
                                 except:
                                     pass
                                 return
+                
+                # Show debug logs if requested (outside any expander)
+                if 'show_debug_logs' in st.session_state and st.session_state.show_debug_logs:
+                    st.session_state.show_debug_logs = False  # Reset the state
+                    with st.expander("Logs de compression (débogage)"):
+                        # Get the log file path
+                        log_path = Path("logs/app.log") if Path("logs/app.log").exists() else None
+                        
+                        if log_path:
+                            try:
+                                # Read the last 50 lines of the log file
+                                with open(log_path, "r") as f:
+                                    log_lines = f.readlines()
+                                    recent_logs = log_lines[-50:]
+                                
+                                # Display the logs
+                                st.code("".join(recent_logs), language="bash")
+                            except Exception as e:
+                                st.warning(f"Impossible de lire les logs: {e}")
+                        else:
+                            # Try to get info from the logger directly
+                            st.code(f"""
+COMPRESSION INFO:
+- Fichier: {final_filename}
+- Taille initiale: {file_size_mb:.2f} MB
+- Format: {file_extension}
+- Paramètres: Compression agressive {optimal_settings if 'optimal_settings' in locals() else 'N/A'}
+- Résultat: Fichier encore trop volumineux ({compressed_size_mb if 'compressed_size_mb' in locals() else 'N/A'} MB)
+                            """, language="bash")
                 
                 # Step 2: Validate the final file
                 is_valid, validation_message = transcription_service.validate_audio_file(final_audio_path)
@@ -567,95 +566,81 @@ COMPRESSION INFO:
                     pass
 
 
-def sessions_page():
-    """View and manage existing sessions page."""
-    st.markdown('<h1 class="main-header">📚 Sessions Existantes</h1>', unsafe_allow_html=True)
+def display_session_details(session):
+    """Display the details of a selected session."""
+    st.markdown(f'<h1 class="main-header">📚 {session.title}</h1>', unsafe_allow_html=True)
     
-    try:
-        with get_db_session() as db:
-            sessions = db.query(Session).order_by(Session.date.desc()).all()
-            
-            if not sessions:
-                st.info("Aucune session trouvée. Uploadez votre première session!")
-                return
-            
-            # Display sessions
-            for session in sessions:
-                with st.expander(f"🎲 {session.title} - Session #{session.session_number}"):
-                    col1, col2, col3 = st.columns([2, 1, 1])
-                    
-                    with col1:
-                        st.write(f"**Date:** {session.date.strftime('%d/%m/%Y')}")
-                        st.write(f"**Fichier:** {session.audio_file_name}")
-                        if session.audio_file_size:
-                            size_mb = session.audio_file_size / (1024 * 1024)
-                            st.write(f"**Taille:** {size_mb:.2f} MB")
-                    
-                    with col2:
-                        # Status badge
-                        status_class = f"status-{session.processing_status.replace('_', '-')}"
-                        st.markdown(
-                            f'<span class="status-badge {status_class}">{session.processing_status.upper()}</span>',
-                            unsafe_allow_html=True
-                        )
-                    
-                    with col3:
-                        if st.button(f"Voir détails", key=f"view_{session.id}"):
-                            st.session_state.selected_session = str(session.id)
-                            st.rerun()
-                    
-                    # Show content if session is completed
-                    if session.processing_status == "completed":
-                        if session.tldr_summary:
-                            st.subheader("📝 TL;DR")
-                            st.write(session.tldr_summary)
-                        
-                        if session.narrative_summary:
-                            st.subheader("📖 Résumé Narratif")
-                            st.write(session.narrative_summary)
-                        
-                        # Structured information in columns
-                        if any([session.npcs, session.items, session.locations, session.key_events]):
-                            st.subheader("🗂️ Informations Structurées")
-                            
-                            info_col1, info_col2 = st.columns(2)
-                            
-                            with info_col1:
-                                if session.npcs:
-                                    st.write("**👥 PNJ rencontrés:**")
-                                    for npc in session.npcs:
-                                        st.write(f"• {npc}")
-                                
-                                if session.items:
-                                    st.write("**🎒 Objets:**")
-                                    for item in session.items:
-                                        st.write(f"• {item}")
-                            
-                            with info_col2:
-                                if session.locations:
-                                    st.write("**🗺️ Lieux visités:**")
-                                    for location in session.locations:
-                                        st.write(f"• {location}")
-                                
-                                if session.key_events:
-                                    st.write("**⚡ Événements clés:**")
-                                    for event in session.key_events:
-                                        st.write(f"• {event}")
-                        
-                        # Transcript (collapsible with checkbox)
-                        if session.transcript:
-                            show_transcript = st.checkbox("📜 Voir la transcription complète", key=f"transcript_{session.id}")
-                            if show_transcript:
-                                st.text_area(
-                                    "Transcription",
-                                    value=session.transcript,
-                                    height=300,
-                                    disabled=True
-                                )
+    # Session metadata
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.write(f"**Date:** {session.date.strftime('%d/%m/%Y')}")
+    with col2:
+        st.write(f"**Fichier:** {session.audio_file_name}")
+    with col3:
+        if session.audio_file_size:
+            size_mb = session.audio_file_size / (1024 * 1024)
+            st.write(f"**Taille:** {size_mb:.2f} MB")
     
-    except Exception as e:
-        logger.error(f"Failed to load sessions: {e}")
-        st.error(f"Failed to load sessions: {e}")
+    # Status badge
+    status_class = f"status-{session.processing_status.replace('_', '-')}"
+    st.markdown(
+        f'<span class="status-badge {status_class}">{session.processing_status.upper()}</span>',
+        unsafe_allow_html=True
+    )
+    
+    if session.processing_status == "completed":
+        if session.tldr_summary:
+            st.subheader("📝 TL;DR")
+            st.write(session.tldr_summary)
+        
+        if session.narrative_summary:
+            st.subheader("📖 Résumé Narratif")
+            st.write(session.narrative_summary)
+        
+        # Structured information in columns
+        if any([session.npcs, session.items, session.locations, session.key_events]):
+            st.subheader("🗂️ Informations Structurées")
+            
+            info_col1, info_col2 = st.columns(2)
+            
+            with info_col1:
+                if session.npcs:
+                    st.write("**👥 PNJ rencontrés:**")
+                    for npc in session.npcs:
+                        st.write(f"• {npc}")
+                
+                if session.items:
+                    st.write("**🎒 Objets:**")
+                    for item in session.items:
+                        st.write(f"• {item}")
+            
+            with info_col2:
+                if session.locations:
+                    st.write("**🗺️ Lieux visités:**")
+                    for location in session.locations:
+                        st.write(f"• {location}")
+                
+                if session.key_events:
+                    st.write("**⚡ Événements clés:**")
+                    for event in session.key_events:
+                        st.write(f"• {event}")
+        
+        # Transcript (collapsible with checkbox)
+        if session.transcript:
+            show_transcript = st.checkbox("📜 Voir la transcription complète", key=f"transcript_{session.id}")
+            if show_transcript:
+                st.text_area(
+                    "Transcription",
+                    value=session.transcript,
+                    height=300,
+                    disabled=True
+                )
+    elif session.processing_status == "error":
+        st.error("Une erreur s'est produite lors du traitement de cette session.")
+    elif session.processing_status in ["transcribing", "analyzing"]:
+        st.info(f"Session en cours de traitement: {session.processing_status}")
+    else:
+        st.info("Session uploadée, en attente de traitement.")
 
 
 def main():
@@ -663,21 +648,76 @@ def main():
     # Initialize app
     init_app()
     
+    # Initialize session state variables if they don't exist
+    if 'extreme_compression_clicked' not in st.session_state:
+        st.session_state.extreme_compression_clicked = False
+    if 'show_debug_logs' not in st.session_state:
+        st.session_state.show_debug_logs = False
+    if 'selected_session' not in st.session_state:
+        st.session_state.selected_session = None
+    if 'current_page' not in st.session_state:
+        st.session_state.current_page = "new_session"
+    
     # Sidebar navigation
     st.sidebar.title("🎲 Maître Joueur")
     st.sidebar.markdown("---")
     
-    page = st.sidebar.selectbox(
-        "Navigation",
-        ["📁 Nouvelle Session", "📚 Sessions Existantes"],
-        index=0
-    )
+    # New Session button
+    if st.sidebar.button("📁 Nouvelle Session", use_container_width=True):
+        st.session_state.current_page = "new_session"
+        st.session_state.selected_session = None
+        st.rerun()
+    
+    st.sidebar.markdown("---")
+    
+    # Load and display previous sessions
+    try:
+        with get_db_session() as db:
+            sessions = db.query(Session).order_by(Session.date.desc()).all()
+            
+            if sessions:
+                st.sidebar.subheader("📚 Sessions Existantes")
+                
+                for session in sessions:
+                    # Create button for each session
+                    session_button_text = f"{session.title} - Session #{session.session_number}"
+                    
+                    # Highlight selected session
+                    button_type = "primary" if st.session_state.selected_session == str(session.id) else "secondary"
+                    
+                    if st.sidebar.button(
+                        session_button_text,
+                        key=f"session_{session.id}",
+                        use_container_width=True,
+                        type=button_type
+                    ):
+                        st.session_state.selected_session = str(session.id)
+                        st.session_state.current_page = "session_details"
+                        st.rerun()
+            
+    except Exception as e:
+        logger.error(f"Failed to load sessions for sidebar: {e}")
+        st.sidebar.error("Erreur lors du chargement des sessions")
     
     # Display selected page
-    if page == "📁 Nouvelle Session":
+    if st.session_state.current_page == "new_session":
         upload_page()
-    elif page == "📚 Sessions Existantes":
-        sessions_page()
+    elif st.session_state.current_page == "session_details" and st.session_state.selected_session:
+        # Display selected session details
+        try:
+            with get_db_session() as db:
+                session = db.query(Session).filter(Session.id == uuid.UUID(st.session_state.selected_session)).first()
+                if session:
+                    display_session_details(session)
+                else:
+                    st.error("Session non trouvée")
+                    st.session_state.current_page = "new_session"
+                    st.session_state.selected_session = None
+        except Exception as e:
+            logger.error(f"Failed to load session details: {e}")
+            st.error("Erreur lors du chargement de la session")
+            st.session_state.current_page = "new_session"
+            st.session_state.selected_session = None
     
     # Footer
     st.sidebar.markdown("---")

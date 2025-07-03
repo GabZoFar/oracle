@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     
     # File Upload Configuration
     upload_dir: str = Field("data/audio", env="UPLOAD_DIR")
-    max_file_size_mb: int = Field(500, env="MAX_FILE_SIZE_MB")
+    max_file_size_mb: int = Field(200, env="MAX_FILE_SIZE_MB")
     
     # Application Configuration
     debug: bool = Field(False, env="DEBUG")

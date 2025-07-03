@@ -1,0 +1,36 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Project Structure Guidelines
+
+## Structure Overview
+- Follow the structure defined in PROJECT_STRUCTURE.md
+- Keep all source code in the `src/` directory
+- Use proper module organization with `__init__.py` files
+
+## Documentation
+- Update README.md with setup and usage instructions
+- Document all public functions and classes
+- Include examples in docstrings
+- Keep PROJECT_STRUCTURE.md current with changes
+
+## Current Project Structure
+```
+maitre-joueur/
+├── app.py                    # Main Streamlit application
+├── src/
+│   ├── config.py            # Pydantic configuration
+│   ├── database/
+│   │   ├── models.py        # SQLAlchemy models
+│   │   └── database.py      # Database management
+│   └── services/
+│       ├── transcription.py # OpenAI Whisper service
+│       └── ai_analysis.py   # GPT-4o analysis service
+├── data/                    # Audio files & database
+├── tests/                   # Test structure ready
+└── Documentation files
+```
+
+@PROJECT_STRUCTURE.md

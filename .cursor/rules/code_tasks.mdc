@@ -1,0 +1,28 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Code and Tasks Guidelines
+
+## Technical Assumptions
+- I am technically proficient
+- I have ffmpeg installed and know how to use it
+- I know how to use git
+- I will handle git operations (push, pull, etc.) myself
+- I will handle file/folder deletions myself when needed
+
+## Task Approach
+- Before implementing code changes, provide thoughtful explanation of:
+  - The approach being taken
+  - Which files will be modified and why
+  - Overall solution strategy
+- During implementation, explain changes as they are made to facilitate better review
+- Provide concise summary of changes at the end of implementation
+- Focus on clear reasoning and explanation rather than rushing into code
+
+## Communication Style
+- Technical and direct
+- Assume competence but explain reasoning
+- No need to explain basic concepts
+- Focus on solution design and implementation details

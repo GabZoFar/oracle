@@ -1,0 +1,27 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Maître Joueur RPG Session Management Tool Guidelines
+
+## Package Management
+- ALWAYS use `uv` instead of `pip` for package management
+- Use `uv add <package>` to add dependencies
+- Use `uv venv` to create virtual environments
+- Use `uv run` to execute scripts in the virtual environment
+- Update pyproject.toml when adding new dependencies
+
+## Code Style & Standards
+- Use Python 3.11+ features
+- Follow PEP 8 style guidelines
+- Use type hints for all function parameters and return values
+- Use Pydantic for data validation and models
+- Use SQLAlchemy for database operations
+- Prefer async/await patterns where applicable
+
+## Environment & Security
+- Never display or commit API keys or secrets
+- Always assume environment variables are properly set in .env
+- Use python-dotenv to load environment variables
+- Add sensitive files to .gitignore
