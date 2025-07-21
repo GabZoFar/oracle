@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script d'aide à l'installation de FFmpeg pour Maître Joueur.
+Script d'aide à l'installation de FFmpeg pour Oracle.
 Ce script détecte le système d'exploitation et fournit des instructions d'installation.
 """
 
@@ -149,7 +149,7 @@ def get_installation_instructions():
 
 def print_instructions():
     """Affiche les instructions d'installation."""
-    print("🎬 Installation de FFmpeg pour Maître Joueur")
+    print("🎬 Installation de FFmpeg pour Oracle")
     print("=" * 50)
     
     if check_ffmpeg():
@@ -175,7 +175,7 @@ def print_instructions():
     print("📝 Notes importantes :")
     print("• Redémarrez votre terminal après l'installation")
     print("• Vérifiez l'installation avec : ffmpeg -version")
-    print("• Relancez Maître Joueur pour activer la compression automatique")
+    print("• Relancez Oracle pour activer la compression automatique")
 
 
 def main():

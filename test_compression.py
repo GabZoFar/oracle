@@ -112,7 +112,7 @@ def test_compression_scenarios():
 
 def main():
     """Fonction principale."""
-    print("🧪 Test de la compression audio - Maître Joueur")
+    print("🧪 Test de la compression audio - Oracle")
     print("=" * 60)
     
     # Test basic functionality

@@ -130,7 +130,7 @@ def test_database():
 
 def main():
     """Run all tests."""
-    print("🎲 Maître Joueur - Setup Verification")
+    print("🎲 Oracle - Setup Verification")
     print("=" * 50)
     
     tests = [

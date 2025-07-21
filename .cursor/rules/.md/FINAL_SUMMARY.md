@@ -1,4 +1,4 @@
-# 🎉 Résumé Final - Maître Joueur avec Compression Automatique
+# 🎉 Résumé Final - Oracle avec Compression Automatique
 
 ## 🚀 Problèmes Résolus
 
@@ -147,7 +147,7 @@ ENABLE_STREAMING=true      # Nouveau : pour streaming futur
 
 ## 🚀 Prêt à Utiliser !
 
-L'application **Maître Joueur** est maintenant une solution complète pour :
+L'application **Oracle** est maintenant une solution complète pour :
 - ✅ **Transcription** de sessions RPG
 - ✅ **Analyse IA** des contenus
 - ✅ **Gestion** des sessions

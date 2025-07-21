@@ -2,7 +2,7 @@
 
 ## Vue d'ensemble
 
-La nouvelle fonctionnalité de compression automatique permet aux utilisateurs de compresser leurs fichiers audio volumineux directement dans l'interface de Maître Joueur, sans avoir besoin d'outils externes.
+La nouvelle fonctionnalité de compression automatique permet aux utilisateurs de compresser leurs fichiers audio volumineux directement dans l'interface de Oracle, sans avoir besoin d'outils externes.
 
 ## ✨ Fonctionnalités
 
@@ -222,4 +222,4 @@ Si la première compression ne suffit pas (> 24MB), l'algorithme :
 
 ---
 
-**La compression automatique transforme Maître Joueur en solution complète pour les fichiers audio volumineux ! 🎉** 
+**La compression automatique transforme Oracle en solution complète pour les fichiers audio volumineux ! 🎉** 

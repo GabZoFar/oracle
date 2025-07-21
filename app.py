@@ -1,5 +1,5 @@
 """
-Maître Joueur - RPG Session Management Tool
+Oracle - RPG Session Management Tool
 A Streamlit application for transcribing and analyzing RPG session recordings.
 """
 
@@ -25,7 +25,7 @@ from src.utils.audio_compression import audio_helper
 
 # Page configuration
 st.set_page_config(
-    page_title="Maître Joueur - RPG Session Manager",
+    page_title="Oracle",
     page_icon="🎲",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -58,6 +58,20 @@ st.markdown("""
     .status-analyzing { background-color: #fd79a8; color: white; }
     .status-completed { background-color: #00b894; color: white; }
     .status-error { background-color: #e17055; color: white; }
+    
+    /* Left-align session button text */
+    .stButton > button {
+        text-align: left !important;
+        justify-content: flex-start !important;
+    }
+    
+    /* Specifically target sidebar buttons */
+    .css-1d391kg .stButton > button,
+    .css-1y4p8pa .stButton > button {
+        text-align: left !important;
+        justify-content: flex-start !important;
+        padding-left: 0.75rem !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -657,9 +671,15 @@ def main():
         st.session_state.selected_session = None
     if 'current_page' not in st.session_state:
         st.session_state.current_page = "new_session"
+    if 'rename_session_id' not in st.session_state:
+        st.session_state.rename_session_id = None
+    if 'delete_session_id' not in st.session_state:
+        st.session_state.delete_session_id = None
+    if 'confirm_delete' not in st.session_state:
+        st.session_state.confirm_delete = False
     
     # Sidebar navigation
-    st.sidebar.title("🎲 Maître Joueur")
+    st.sidebar.title("Oracle")
     st.sidebar.markdown("---")
     
     # New Session button
@@ -679,50 +699,164 @@ def main():
                 st.sidebar.subheader("📚 Sessions Existantes")
                 
                 for session in sessions:
-                    # Create button for each session
-                    session_button_text = f"{session.title} - Session #{session.session_number}"
+                    # Create a container for each session with button and action buttons
+                    session_container = st.sidebar.container()
                     
-                    # Highlight selected session
-                    button_type = "primary" if st.session_state.selected_session == str(session.id) else "secondary"
-                    
-                    if st.sidebar.button(
-                        session_button_text,
-                        key=f"session_{session.id}",
-                        use_container_width=True,
-                        type=button_type
-                    ):
-                        st.session_state.selected_session = str(session.id)
-                        st.session_state.current_page = "session_details"
-                        st.rerun()
+                    with session_container:
+                        # Create columns for session button and action buttons
+                        col1, col2, col3 = st.columns([6, 1, 1])
+                        
+                        with col1:
+                            # Session button
+                            session_button_text = f"{session.title} - Session #{session.session_number}"
+                            button_type = "primary" if st.session_state.selected_session == str(session.id) else "secondary"
+                            
+                            if st.button(
+                                session_button_text,
+                                key=f"session_{session.id}",
+                                use_container_width=True,
+                                type=button_type
+                            ):
+                                st.session_state.selected_session = str(session.id)
+                                st.session_state.current_page = "session_details"
+                                st.rerun()
+                        
+                        with col2:
+                            # Rename button
+                            if st.button("✏️", key=f"rename_{session.id}", help="Renommer"):
+                                st.session_state.rename_session_id = str(session.id)
+                                st.rerun()
+                        
+                        with col3:
+                            # Delete button
+                            if st.button("🗑️", key=f"delete_{session.id}", help="Supprimer"):
+                                st.session_state.delete_session_id = str(session.id)
+                                st.session_state.confirm_delete = True
+                                st.rerun()
             
     except Exception as e:
         logger.error(f"Failed to load sessions for sidebar: {e}")
         st.sidebar.error("Erreur lors du chargement des sessions")
     
-    # Display selected page
-    if st.session_state.current_page == "new_session":
-        upload_page()
-    elif st.session_state.current_page == "session_details" and st.session_state.selected_session:
-        # Display selected session details
+    # Handle rename dialog
+    if st.session_state.rename_session_id:
         try:
             with get_db_session() as db:
-                session = db.query(Session).filter(Session.id == uuid.UUID(st.session_state.selected_session)).first()
-                if session:
-                    display_session_details(session)
+                session_to_rename = db.query(Session).filter(Session.id == uuid.UUID(st.session_state.rename_session_id)).first()
+                if session_to_rename:
+                    # Show rename dialog in main area
+                    st.markdown("### ✏️ Renommer la session")
+                    new_title = st.text_input(
+                        "Nouveau titre:",
+                        value=session_to_rename.title,
+                        key="new_title_input"
+                    )
+                    
+                    col1, col2, col3 = st.columns([1, 1, 2])
+                    with col1:
+                        if st.button("💾 Sauvegarder", type="primary"):
+                            if new_title.strip():
+                                session_to_rename.title = new_title.strip()
+                                session_to_rename.updated_at = datetime.now()
+                                db.commit()
+                                st.success(f"Session renommée en: {new_title}")
+                                st.session_state.rename_session_id = None
+                                st.rerun()
+                            else:
+                                st.error("Le titre ne peut pas être vide")
+                    
+                    with col2:
+                        if st.button("❌ Annuler"):
+                            st.session_state.rename_session_id = None
+                            st.rerun()
                 else:
-                    st.error("Session non trouvée")
-                    st.session_state.current_page = "new_session"
-                    st.session_state.selected_session = None
+                    st.error("Session introuvable")
+                    st.session_state.rename_session_id = None
         except Exception as e:
-            logger.error(f"Failed to load session details: {e}")
-            st.error("Erreur lors du chargement de la session")
-            st.session_state.current_page = "new_session"
-            st.session_state.selected_session = None
+            logger.error(f"Failed to rename session: {e}")
+            st.error("Erreur lors du renommage")
+            st.session_state.rename_session_id = None
+    
+    # Handle delete confirmation dialog
+    elif st.session_state.confirm_delete and st.session_state.delete_session_id:
+        try:
+            with get_db_session() as db:
+                session_to_delete = db.query(Session).filter(Session.id == uuid.UUID(st.session_state.delete_session_id)).first()
+                if session_to_delete:
+                    # Show confirmation dialog in main area
+                    st.markdown("### 🗑️ Confirmer la suppression")
+                    st.warning(f"Êtes-vous sûr de vouloir supprimer **{session_to_delete.title}** ?")
+                    st.markdown("⚠️ Cette action est irréversible.")
+                    
+                    col1, col2, col3 = st.columns([1, 1, 2])
+                    with col1:
+                        if st.button("🗑️ Oui, supprimer", type="primary"):
+                            # Delete audio file if it exists
+                            try:
+                                if session_to_delete.audio_file_path:
+                                    audio_path = Path(session_to_delete.audio_file_path)
+                                    if audio_path.exists():
+                                        audio_path.unlink()
+                            except Exception as e:
+                                logger.warning(f"Failed to delete audio file: {e}")
+                            
+                            # Delete session from database
+                            db.delete(session_to_delete)
+                            db.commit()
+                            
+                            st.success("Session supprimée avec succès")
+                            
+                            # Reset state
+                            st.session_state.delete_session_id = None
+                            st.session_state.confirm_delete = False
+                            
+                            # If we were viewing the deleted session, go back to new session page
+                            if st.session_state.selected_session == str(session_to_delete.id):
+                                st.session_state.selected_session = None
+                                st.session_state.current_page = "new_session"
+                            
+                            st.rerun()
+                    
+                    with col2:
+                        if st.button("❌ Annuler"):
+                            st.session_state.delete_session_id = None
+                            st.session_state.confirm_delete = False
+                            st.rerun()
+                else:
+                    st.error("Session introuvable")
+                    st.session_state.delete_session_id = None
+                    st.session_state.confirm_delete = False
+        except Exception as e:
+            logger.error(f"Failed to delete session: {e}")
+            st.error("Erreur lors de la suppression")
+            st.session_state.delete_session_id = None
+            st.session_state.confirm_delete = False
+    
+    # Display selected page (only if not in rename/delete mode)
+    elif not st.session_state.rename_session_id and not st.session_state.confirm_delete:
+        if st.session_state.current_page == "new_session":
+            upload_page()
+        elif st.session_state.current_page == "session_details" and st.session_state.selected_session:
+            # Display selected session details
+            try:
+                with get_db_session() as db:
+                    session = db.query(Session).filter(Session.id == uuid.UUID(st.session_state.selected_session)).first()
+                    if session:
+                        display_session_details(session)
+                    else:
+                        st.error("Session non trouvée")
+                        st.session_state.current_page = "new_session"
+                        st.session_state.selected_session = None
+            except Exception as e:
+                logger.error(f"Failed to load session details: {e}")
+                st.error("Erreur lors du chargement de la session")
+                st.session_state.current_page = "new_session"
+                st.session_state.selected_session = None
     
     # Footer
     st.sidebar.markdown("---")
     st.sidebar.markdown("*Outil de gestion de sessions JDR*")
-    st.sidebar.markdown("*Powered by OpenAI & Streamlit*")
+    st.sidebar.markdown("*Propulsé par OpenAI & Streamlit*")
 
 
 if __name__ == "__main__":

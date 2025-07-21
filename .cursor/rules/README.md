@@ -1,6 +1,6 @@
-# Cursor Rules for Maître Joueur
+# Cursor Rules for Oracle
 
-This directory contains Cursor rules for the Maître Joueur RPG Session Management Tool. These rules provide guidance to the Cursor AI assistant on various aspects of the project.
+This directory contains Cursor rules for the Oracle RPG Session Management Tool. These rules provide guidance to the Cursor AI assistant on various aspects of the project.
 
 ## Rules Structure
 

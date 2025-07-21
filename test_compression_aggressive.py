@@ -102,7 +102,7 @@ def test_different_file_sizes():
 
 def main():
     """Fonction principale."""
-    print("🧪 Test de Compression Agressive - Maître Joueur")
+    print("🧪 Test de Compression Agressive - Oracle")
     print("=" * 60)
     
     if not test_aggressive_compression():

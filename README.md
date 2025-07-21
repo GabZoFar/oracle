@@ -1,4 +1,4 @@
-# 🎲 Maître Joueur - RPG Session Management Tool
+# 🎲 Oracle - RPG Session Management Tool
 
 A modern Streamlit application for Game Masters to transcribe, analyze, and manage RPG session recordings using AI-powered analysis.
 

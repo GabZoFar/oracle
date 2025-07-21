@@ -3,7 +3,7 @@ description:
 globs: 
 alwaysApply: true
 ---
-# Maître Joueur RPG Session Management Tool Guidelines
+# Oracle RPG Session Management Tool Guidelines
 
 ## Package Management
 - ALWAYS use `uv` instead of `pip` for package management
